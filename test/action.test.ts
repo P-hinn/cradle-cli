@@ -172,9 +172,25 @@ describe('release workflow', () => {
     }
   })
 
-  it("attaches cradle's own SBOM to the release", () => {
-    // A tool that asks people to keep an SBOM should ship one.
+  it("attaches cradle's own SBOM to the release, under distinct names", () => {
+    // A tool that asks people to keep an SBOM should ship one. Both SBOMs are
+    // written as sbom.cdx.json where they are generated, and release assets are
+    // keyed by filename — uploading them as-is is what broke the 0.1.3 release.
     const scripts = (RELEASE_JOB?.steps ?? []).map((step) => step.run ?? '').join('\n')
-    expect(scripts).toContain('.cradle/sbom.cdx.json#')
+    expect(scripts).toContain('-sbom.cdx.json')
+    expect(scripts).toContain('-sbom-with-dev.cdx.json')
+
+    const uploaded = [...scripts.matchAll(/\$\{assets\}\/([^"'\s]+)/g)].map((match) => match[1])
+    expect(uploaded.length).toBeGreaterThan(1)
+    expect(new Set(uploaded).size).toBe(uploaded.length)
+  })
+
+  it('can be run again after a partial failure', () => {
+    // 0.1.3 published and then the release step failed. Fixing that should be a
+    // re-run, not a burnt version number.
+    const scripts = (RELEASE_JOB?.steps ?? []).map((step) => step.run ?? '').join('\n')
+    expect(scripts).toContain('already on the registry; skipping publish')
+    expect(scripts).toContain('gh release view')
+    expect(scripts).toContain('--clobber')
   })
 })

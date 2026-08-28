@@ -47,7 +47,10 @@ jobs:
             echo "Publishing them out of step would put a version on npm that no tag points at."
             exit 1
           fi
-          echo "version=${version}" >> "$GITHUB_ENV"
+          {
+            echo "version=${version}"
+            echo "package=$(node -p "require('./package.json').name")"
+          } >> "$GITHUB_ENV"
 
       # prepublishOnly runs these again before publishing. Running them here too
       # means a broken build fails before anything is uploaded anywhere.
@@ -65,8 +68,18 @@ jobs:
       # No NODE_AUTH_TOKEN on purpose. Authentication is the OIDC exchange with
       # npm's trusted publisher for this repository and this workflow filename;
       # an empty token in the environment would only get in the way of it.
+      #
+      # Skipping an already-published version keeps the workflow re-runnable. A
+      # release that fails after publishing but before the GitHub release should
+      # be fixable by running it again, not by burning a version number.
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public
+        run: |
+          set -euo pipefail
+          if npm view "${package}@${version}" version >/dev/null 2>&1; then
+            echo "::notice::${package}@${version} is already on the registry; skipping publish."
+            exit 0
+          fi
+          npm publish --provenance --access public
 
       - name: Create the GitHub release
         env:
@@ -86,13 +99,30 @@ jobs:
             notes="See CHANGELOG.md."
           fi
 
-          # cradle's own SBOM, attached as evidence. A tool that asks people to
-          # keep one should ship one.
           printf '%s\n' "$notes" > "${RUNNER_TEMP}/notes.md"
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes-file "${RUNNER_TEMP}/notes.md" \
-            --verify-tag \
-            .cradle/sbom.cdx.json#"SBOM (production, CycloneDX 1.6)" \
-            .cradle-dev/sbom.cdx.json#"SBOM (including dev dependencies)" \
-            .cradle/report.html#"Report"
+
+          # cradle's own SBOM, attached as evidence: a tool that asks people to
+          # keep one should ship one. Copied to distinct names first, because
+          # release assets are keyed by filename and both SBOMs are called
+          # sbom.cdx.json where they are written.
+          assets="${RUNNER_TEMP}/assets"
+          mkdir -p "$assets"
+          cp .cradle/sbom.cdx.json "${assets}/${package}-${version}-sbom.cdx.json"
+          cp .cradle-dev/sbom.cdx.json "${assets}/${package}-${version}-sbom-with-dev.cdx.json"
+          cp .cradle/report.html "${assets}/${package}-${version}-report.html"
+
+          # Create or update, so a run that failed after the release was made can
+          # simply be run again.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file "${RUNNER_TEMP}/notes.md"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file "${RUNNER_TEMP}/notes.md" \
+              --verify-tag
+          fi
+
+          gh release upload "$TAG" --clobber \
+            "${assets}/${package}-${version}-sbom.cdx.json" \
+            "${assets}/${package}-${version}-sbom-with-dev.cdx.json" \
+            "${assets}/${package}-${version}-report.html"
