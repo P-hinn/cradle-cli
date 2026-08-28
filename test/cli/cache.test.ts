@@ -1,9 +1,8 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FileCache, cacheDirFor } from '../../src/cli/cache.js'
-import { fixture } from '../support/fixtures.js'
 
 const created: string[] = []
 async function temp(): Promise<string> {
@@ -23,21 +22,23 @@ afterEach(async () => {
 })
 
 describe('cacheDirFor', () => {
-  it('honours an explicit override, for CI images that mount a cache', () => {
+  it('honours an explicit override, for CI images that mount a cache', async () => {
     process.env.CRADLE_CACHE_DIR = '/mnt/cache'
-    expect(cacheDirFor(fixture('npm-basic'))).toBe('/mnt/cache')
+    expect(cacheDirFor(await temp())).toBe('/mnt/cache')
   })
 
-  it('uses node_modules/.cache when the project is installed', () => {
-    // npm-basic has a real node_modules from its install.
-    expect(cacheDirFor(fixture('npm-basic'))).toBe(
-      join(fixture('npm-basic'), 'node_modules', '.cache', 'cradle'),
-    )
+  it('uses node_modules/.cache when the project is installed', async () => {
+    // Built here rather than read off a fixture: fixture node_modules are not
+    // committed, so a fixture-based assertion would only hold on a machine that
+    // had run npm install.
+    const project = await temp()
+    await mkdir(join(project, 'node_modules'), { recursive: true })
+    expect(cacheDirFor(project)).toBe(join(project, 'node_modules', '.cache', 'cradle'))
   })
 
-  it('falls back outside the project when node_modules is absent', () => {
+  it('falls back outside the project when node_modules is absent', async () => {
     process.env.XDG_CACHE_HOME = '/xdg'
-    expect(cacheDirFor(fixture('detect/no-lockfile'))).toBe(join('/xdg', 'cradle'))
+    expect(cacheDirFor(await temp())).toBe(join('/xdg', 'cradle'))
   })
 })
 
