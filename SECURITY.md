@@ -31,6 +31,20 @@ of that report and into execution is in scope, in particular:
 Findings that a dependency of a *scanned* project is vulnerable are not
 vulnerabilities in cradle — that is the tool working.
 
+## What cradle does on your machine
+
+Static analysers flag capabilities, so here is the full list rather than making
+you go and read the source:
+
+| Capability | Where | Why |
+| :-- | :-- | :-- |
+| **Reads files** | the lockfile, `package.json`, `node_modules/*/package.json`, `.cradle/` | Resolving the tree, and reading licences for pnpm and Yarn, whose lockfiles do not carry them. Paths are contained to the project directory. |
+| **Writes files** | `.cradle/` and the advisory cache | The SBOM, findings, report and VEX statements. Nothing outside those. |
+| **Network** | `api.osv.dev`, `registry.npmjs.org` | Advisory lookup, and release dates and deprecation notices for the readiness check. Both are skipped entirely with `--offline`. |
+| **Spawns a process** | `git config --get user.email`, once, in `cradle suppress` | OpenVEX requires an author, and this is the least intrusive way to know who is recording the decision. Fixed arguments, no shell, output ignored on failure. Pass `--author` and it is never called. |
+
+There is no telemetry, no analytics and no phone-home of any kind.
+
 ## Supported versions
 
 While the project is pre-1.0, only the latest published version receives fixes.

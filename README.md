@@ -336,6 +336,14 @@ cd cradle-cli/examples/express-service
 npx cradle-cli scan && open .cradle/report.html
 ```
 
+## What cradle does on your machine
+
+Reads your lockfile and `node_modules` manifests, writes to `.cradle/`, and talks
+to `api.osv.dev` and `registry.npmjs.org` — both skipped by `--offline`. It runs
+`git config --get user.email` once, in `cradle suppress`, to know who is
+recording a decision; `--author` avoids even that. No telemetry.
+[`SECURITY.md`](SECURITY.md) has the full table.
+
 ## Contributing
 
 Issues and pull requests welcome. [`SPEC.md`](SPEC.md) is the working
