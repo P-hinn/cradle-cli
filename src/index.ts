@@ -26,5 +26,7 @@ export {
   recommendUpgrades,
 } from './core/vulns/recommend.js'
 export { atOrAbove, normalizeSeverity, severityRank } from './core/vulns/severity.js'
+export { embedJson, escapeHtml, safeUrl } from './report/escape.js'
+export { buildReport, type ReportInput } from './report/html.js'
 export * from './types/index.js'
 export { TOOL_NAME, TOOL_VERSION } from './version.generated.js'

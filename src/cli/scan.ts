@@ -10,6 +10,7 @@ import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
 import { countBySeverity, resolveFindings } from '../core/vulns/findings.js'
 import { queryOsv } from '../core/vulns/osv.js'
 import { findingsWithoutFix, recommendUpgrades } from '../core/vulns/recommend.js'
+import { buildReport } from '../report/html.js'
 import {
   ARTIFACT_SCHEMA_VERSION,
   type CycloneDxSpecVersion,
@@ -104,11 +105,8 @@ export async function runScan(
   }
 
   const timestamp = now().toISOString()
-  const bom = buildBom(graph, {
-    specVersion,
-    timestamp,
-    serialNumber: dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`,
-  })
+  const serialNumber = dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
+  const bom = buildBom(graph, { specVersion, timestamp, serialNumber })
 
   const findingsDocument: FindingsDocument = {
     schemaVersion: ARTIFACT_SCHEMA_VERSION,
@@ -127,6 +125,20 @@ export async function runScan(
   await writeFile(
     join(outputDir, 'findings.json'),
     `${JSON.stringify(findingsDocument, null, 2)}\n`,
+    'utf8',
+  )
+  await writeFile(
+    join(outputDir, 'report.html'),
+    buildReport({
+      graph,
+      findings,
+      timestamp,
+      offline,
+      specVersion,
+      serialNumber,
+      toolName: TOOL_NAME,
+      toolVersion: TOOL_VERSION,
+    }),
     'utf8',
   )
 
@@ -191,6 +203,7 @@ function summarize(input: SummaryInput): string {
     lines.push(`  Findings     ${findings.length}${breakdown === '' ? '' : ` (${breakdown})`}`)
   }
 
+  lines.push(`  Report       ${relative(join(input.outputDir, 'report.html'))}`)
   lines.push(`  Output       ${relative(input.outputDir)}/ · CycloneDX ${input.specVersion}`)
   if (graph.workspaces.length > 0) {
     lines.push(`  Workspaces   ${graph.workspaces.length}: ${graph.workspaces.join(', ')}`)

@@ -265,6 +265,31 @@ Aufbau:
 Design: ruhig, druckbar, hoher Kontrast. Bedeutung nie allein über Farbe. Kein
 Dark-Mode im MVP.
 
+Umgesetzte Details:
+
+* **Severity doppelt kodiert.** Jede Stufe steht ausgeschrieben da *und* trägt ein
+  ordinales Glyph (`●●●` critical bis `○○○` low). Damit überlebt der Rang
+  Graustufendruck und Farbfehlsichtigkeit.
+* **Severity-Herkunft steht im Detail.** Entweder „CVSS v3.1 base score 9.8
+  <Vektor>" oder „wie von der Advisory-Datenbank bewertet" — plus der Satz, dass
+  ein Basiswert die Schwachstelle abstrakt beschreibt und nichts über
+  Erreichbarkeit im Projekt aussagt.
+* **Escaping an genau einer Stelle** (`report/escape.ts`). Paketnamen,
+  Advisory-Texte und Referenz-URLs kommen aus dem Netz, und der Report wird lokal
+  geöffnet — ein eingeschleustes Skript liefe mit `file://`-Origin. URLs werden
+  auf `http`/`https` beschränkt; im eingebetteten JSON bleiben sie unverändert
+  erhalten, weil dieser Block ein wortgetreues Protokoll ist und dort inert.
+* **Ohne JavaScript vollständig lesbar.** Filter- und Sortierleisten sind
+  `hidden`, bis das Skript sie aktiviert; die Tabellen stehen komplett im HTML.
+* **Im Druck kommt alles zurück.** `@media print` blendet die Bedienelemente aus,
+  hebt jede vom Filter versteckte Zeile wieder ein und schreibt Link-Ziele aus —
+  ein gedruckter Report muss vollständig sein.
+* **Report und SBOM tragen dieselbe `serialNumber`,** damit ein Prüfer sie
+  einander zuordnen kann.
+* **Ein leerer Befund wird als Momentaufnahme benannt,** nicht als Freibrief; ein
+  Offline-Lauf zeigt gar keine Findings-Tabelle, weil eine leere Tabelle wie ein
+  geprüftes „nichts gefunden" aussähe.
+
 ### 6.3 VEX-Unterdrückung
 
 Der praktische Alltagsschmerz ist nicht „ich finde keine Schwachstellen", sondern

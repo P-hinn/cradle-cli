@@ -67,6 +67,21 @@ describe('cradle scan', () => {
     expect(out).toContain('Findings     0')
   })
 
+  it('writes a report next to the SBOM and the findings', async () => {
+    const dir = await outputDir()
+    const { out } = await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir])
+
+    const html = await readFile(join(dir, 'report.html'), 'utf8')
+    expect(html.startsWith('<!doctype html>')).toBe(true)
+    expect(html).toContain('acme-vulnerable')
+    expect(out).toContain('report.html')
+
+    // The report and the SBOM must be tied together by the same serial number,
+    // so an auditor can tell they describe one scan.
+    const bom = JSON.parse(await readFile(join(dir, 'sbom.cdx.json'), 'utf8')) as CdxBom
+    expect(html).toContain(bom.serialNumber)
+  })
+
   it('writes findings.json alongside the SBOM', async () => {
     const dir = await outputDir()
     await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir])
