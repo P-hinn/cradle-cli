@@ -1,17 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { CradleError } from '../core/errors.js'
-import { detectPackageManager } from '../core/resolve/detect.js'
-import { resolveNpm } from '../core/resolve/npm.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
-import { applyVex, expiringSoon } from '../core/vex/apply.js'
-import { parseDocument } from '../core/vex/document.js'
-import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
-import { countBySeverity, resolveFindings } from '../core/vulns/findings.js'
-import { queryOsv } from '../core/vulns/osv.js'
+import { expiringSoon } from '../core/vex/apply.js'
+import type { VulnCache } from '../core/vulns/cache.js'
+import { countBySeverity } from '../core/vulns/findings.js'
 import { findingsWithoutFix, recommendUpgrades } from '../core/vulns/recommend.js'
 import { buildReport } from '../report/html.js'
 import {
@@ -25,7 +20,7 @@ import {
   type VexDocument,
 } from '../types/index.js'
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
-import { cacheDirFor, FileCache } from './cache.js'
+import { runPipeline } from './pipeline.js'
 
 export const SCAN_HELP = `cradle scan — resolve dependencies, write an SBOM and look up vulnerabilities
 
@@ -59,7 +54,9 @@ export async function runScan(
     options: {
       'include-dev': { type: 'boolean', default: false },
       offline: { type: 'boolean', default: false },
-      cache: { type: 'boolean', default: true },
+      // Declared literally, not as a negation: node's parseArgs has no --no-
+      // prefix support, so `cache: {...}` alone would reject `--no-cache`.
+      'no-cache': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
       'output-dir': { type: 'string', default: '.cradle' },
       help: { type: 'boolean', short: 'h', default: false },
@@ -85,35 +82,18 @@ export async function runScan(
   const offline = values.offline === true
   const now = dependencies.now ?? (() => new Date())
 
-  const detection = await detectPackageManager(projectDir)
-  if (detection.manager !== 'npm') throw unsupportedManager(detection.manager, detection.lockfile)
-
-  const graph = await resolveNpm({ projectDir, includeDev })
-
-  let findings: Finding[] = []
-  let cacheHits = 0
-  if (!offline) {
-    const cache =
-      dependencies.cache ??
-      (values.cache === false ? NULL_CACHE : new FileCache(cacheDirFor(projectDir)))
-    const result = await queryOsv(
-      graph.components.map((c) => ({ name: c.name, version: c.version })),
-      {
-        fetch: dependencies.fetch ?? globalThis.fetch,
-        cache,
-        userAgent: `${TOOL_NAME}/${TOOL_VERSION}`,
-      },
-    )
-    cacheHits = result.cacheHits
-    findings = resolveFindings(graph, result.byPackage)
-  }
-
-  // Suppressions are applied after the lookup, never instead of it: a suppressed
-  // finding is still recorded, just moved out of the active count.
-  const vex = await loadVex(outputDir)
-  const applied = applyVex(findings, vex, now())
-  findings = applied.active
-  const suppressed = applied.suppressed
+  // Shared with `check`, so a green gate and a clean report can never disagree
+  // about what a finding is.
+  const { graph, findings, suppressed, vex, unmatchedStatements, cacheHits } = await runPipeline({
+    projectDir,
+    outputDir,
+    includeDev,
+    offline,
+    useCache: values['no-cache'] !== true,
+    now: now(),
+    ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+    ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
+  })
 
   const timestamp = now().toISOString()
   const serialNumber = dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
@@ -160,7 +140,7 @@ export async function runScan(
       graph,
       findings,
       suppressed,
-      unusedStatements: applied.unmatched.length,
+      unusedStatements: unmatchedStatements.length,
       expiringSoon: expiringSoon(vex, now()),
       specVersion,
       offline,
@@ -172,34 +152,8 @@ export async function runScan(
   return 0
 }
 
-/**
- * Read `.cradle/vex.json` if the project has one. A broken file is an error, not
- * something to skip past: silently ignoring it would re-report findings the team
- * has already ruled on.
- */
-async function loadVex(outputDir: string): Promise<VexDocument | undefined> {
-  const path = join(outputDir, 'vex.json')
-  if (!existsSync(path)) return undefined
-  return parseDocument(await readFile(path, 'utf8'), path)
-}
-
 function isSpecVersion(value: string | undefined): value is CycloneDxSpecVersion {
   return SUPPORTED_SPEC_VERSIONS.includes(value as CycloneDxSpecVersion)
-}
-
-function unsupportedManager(manager: string, lockfile: string): CradleError {
-  if (manager === 'bun') {
-    return new CradleError(
-      `Bun projects are not supported yet (found ${lockfile})`,
-      'Bun support is deliberately out of scope for now. If the project also builds with npm, ' +
-        'run `npm install --package-lock-only` to produce a package-lock.json and scan that.',
-    )
-  }
-  return new CradleError(
-    `${manager} projects are not supported yet (found ${lockfile})`,
-    'pnpm and Yarn support is the next parser milestone. Until then, `npm install ' +
-      '--package-lock-only` produces a package-lock.json cradle can read.',
-  )
 }
 
 interface SummaryInput {

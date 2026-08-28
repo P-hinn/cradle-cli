@@ -315,6 +315,40 @@ export interface Suppression {
 }
 
 // ---------------------------------------------------------------------------
+// Baseline
+// ---------------------------------------------------------------------------
+
+export interface BaselineEntry {
+  /** Advisory identifier, as cradle reports it. */
+  id: string
+  /** Package name. Not the purl: see SPEC.md §6.4 for why the version is out. */
+  package: string
+  /** The severity when this was accepted, so a later re-rating is still news. */
+  severity: Severity
+  acceptedAt: string
+}
+
+export interface BaselineDocument {
+  schemaVersion: typeof ARTIFACT_SCHEMA_VERSION
+  timestamp: string
+  tool: { name: string; version: string }
+  project: { name: string; version: string }
+  scope: 'production' | 'all'
+  entries: BaselineEntry[]
+}
+
+export interface BaselineDiff {
+  /** Not in the baseline, or worse than when it was accepted. */
+  added: Finding[]
+  /** Already accepted, at the same severity or better. */
+  known: Finding[]
+  /** In the baseline but absent from this scan, so presumably fixed. */
+  resolved: BaselineEntry[]
+  /** Accepted before, but the advisory has since been rated worse. */
+  worsened: Finding[]
+}
+
+// ---------------------------------------------------------------------------
 // Scan options
 // ---------------------------------------------------------------------------
 

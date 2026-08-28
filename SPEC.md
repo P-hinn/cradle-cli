@@ -374,6 +374,35 @@ Exit-Codes: `0` sauber, `1` neue Findings über der Schwelle, `2` Toolfehler. Di
 Unterscheidung zwischen 1 und 2 ist wichtig, damit CI-Fehler nicht als
 Sicherheitsproblem durchgehen.
 
+**Identität eines Findings in der Baseline: Advisory-ID + Paketname, ohne
+Version.** Mit Version würde jeder Patch-Bump eines weiterhin verwundbaren Pakets
+wie ein brandneues Finding aussehen — und ein Gate, das bei fremdem Rauschen rot
+wird, wird abgeschaltet. Die Severity beim Akzeptieren wird mitgeschrieben:
+Wurde ein Advisory seither **schlechter** eingestuft, gilt es wieder als neu. Ein
+akzeptiertes Medium ist kein akzeptiertes Critical.
+
+Weitere umgesetzte Details:
+
+* `--fail-on never` meldet alles und lässt nichts scheitern — für Teams, die das
+  Gate schrittweise einführen.
+* Baseline-Einträge, die im Scan nicht mehr vorkommen, werden als „erledigt"
+  ausgewiesen, damit die Datei aufgeräumt werden kann.
+* Eine kaputte `baseline.json` bricht ab, statt still als „keine Baseline"
+  durchzugehen — das würde das Gate unbemerkt scharf schalten.
+* `--format github` schreibt Annotationen mit **Datei und Zeilennummer** aus der
+  `package.json`, wenn es eine direkte Abhängigkeit ist. Eine Annotation an der
+  Zeile, die man ändern kann, wird gelesen; eine auf Zeile 1 nicht. Transitive
+  Pakete stehen nirgends in der `package.json` und bekommen stattdessen den Pfad
+  im Baum in die Meldung.
+* `scan` und `check` teilen sich dieselbe Pipeline (`cli/pipeline.ts`). Sie müssen
+  sich darüber einig sein, was ein Finding ist — sonst hieße ein grünes Gate etwas
+  anderes als ein sauberer Report.
+
+**Wart in der CLI-Benennung:** `--baseline` und `--no-baseline` sind keine
+Gegenteile. Ersteres *schreibt* die Baseline, letzteres *ignoriert* sie. So steht
+es in der ursprünglichen Spezifikation und so ist es umgesetzt; beide sind als
+eigenständige Optionen deklariert, nicht als Negation.
+
 Ausgabe im CI-Modus als kompakte Liste, optional `--format github` für
 GitHub-Actions-Annotationen (`::error file=...`).
 

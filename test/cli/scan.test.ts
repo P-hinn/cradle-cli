@@ -230,9 +230,8 @@ describe('cradle — dispatch', () => {
     expect(err).toContain("unknown command 'bogus'")
   })
 
-  it('admits which commands are not built yet', async () => {
-    const { code, err } = await run(['check'])
-    expect(code).toBe(2)
-    expect(err).toContain('not implemented yet')
+  it('lists every command it actually has', async () => {
+    const { out } = await run([])
+    for (const command of ['scan', 'check', 'suppress']) expect(out).toContain(command)
   })
 })

@@ -7,6 +7,13 @@
  * live in `cli/`. See SPEC.md §8.
  */
 
+export {
+  baselineKey,
+  diffAgainstBaseline,
+  parseBaseline,
+  serializeBaseline,
+  toBaseline,
+} from './core/baseline/diff.js'
 export { CradleError } from './core/errors.js'
 export { type Detection, detectPackageManager } from './core/resolve/detect.js'
 export { type ResolveNpmOptions, resolveNpm } from './core/resolve/npm.js'
