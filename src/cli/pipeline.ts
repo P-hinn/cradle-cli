@@ -4,12 +4,20 @@ import { join } from 'node:path'
 import { CradleError } from '../core/errors.js'
 import { detectPackageManager } from '../core/resolve/detect.js'
 import { resolveNpm } from '../core/resolve/npm.js'
+import { resolvePnpm } from '../core/resolve/pnpm.js'
+import { resolveYarn } from '../core/resolve/yarn.js'
 import { applyVex } from '../core/vex/apply.js'
 import { parseDocument } from '../core/vex/document.js'
 import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
 import { resolveFindings } from '../core/vulns/findings.js'
 import { queryOsv } from '../core/vulns/osv.js'
-import type { DependencyGraph, Finding, VexDocument, VexStatement } from '../types/index.js'
+import type {
+  DependencyGraph,
+  Finding,
+  PackageManager,
+  VexDocument,
+  VexStatement,
+} from '../types/index.js'
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { cacheDirFor, FileCache } from './cache.js'
 
@@ -44,12 +52,7 @@ export interface PipelineResult {
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
   const detection = await detectPackageManager(options.projectDir)
-  if (detection.manager !== 'npm') throw unsupportedManager(detection.manager, detection.lockfile)
-
-  const graph = await resolveNpm({
-    projectDir: options.projectDir,
-    includeDev: options.includeDev,
-  })
+  const graph = await resolveTree(detection.manager, options, detection.lockfile)
 
   let findings: Finding[] = []
   let cacheHits = 0
@@ -98,17 +101,25 @@ export async function loadVex(outputDir: string): Promise<VexDocument | undefine
   return parseDocument(await readFile(path, 'utf8'), path)
 }
 
-function unsupportedManager(manager: string, lockfile: string): CradleError {
-  if (manager === 'bun') {
-    return new CradleError(
-      `Bun projects are not supported yet (found ${lockfile})`,
-      'Bun support is deliberately out of scope for now. If the project also builds with npm, ' +
-        'run `npm install --package-lock-only` to produce a package-lock.json and scan that.',
-    )
+async function resolveTree(
+  manager: PackageManager,
+  options: PipelineOptions,
+  lockfile: string,
+): Promise<DependencyGraph> {
+  const shared = { projectDir: options.projectDir, includeDev: options.includeDev }
+  switch (manager) {
+    case 'npm':
+      return resolveNpm(shared)
+    case 'pnpm':
+      return resolvePnpm(shared)
+    case 'yarn-classic':
+    case 'yarn-berry':
+      return resolveYarn(manager, shared)
+    case 'bun':
+      throw new CradleError(
+        `Bun projects are not supported (found ${lockfile})`,
+        'Bun support is deliberately out of scope. If the project also builds with npm, run ' +
+          '`npm install --package-lock-only` to produce a package-lock.json and scan that.',
+      )
   }
-  return new CradleError(
-    `${manager} projects are not supported yet (found ${lockfile})`,
-    'pnpm and Yarn support is the next parser milestone. Until then, `npm install ' +
-      '--package-lock-only` produces a package-lock.json cradle can read.',
-  )
 }

@@ -194,18 +194,42 @@ describe('cradle scan — failures', () => {
     expect(err).toContain('1.6, 1.7')
   })
 
-  it('says what to do about a pnpm project instead of failing obscurely', async () => {
-    const { code, err } = await run(['scan', fixture('detect/pnpm')])
-    expect(code).toBe(2)
-    expect(err).toContain('pnpm projects are not supported yet')
-    expect(err).toContain('--package-lock-only')
+  it('reports a project with no dependencies as exactly that', async () => {
+    const dir = await outputDir()
+    const { code, out } = await run([
+      'scan',
+      fixture('detect/pnpm'),
+      '--output-dir',
+      dir,
+      '--offline',
+    ])
+    expect(code).toBe(0)
+    expect(out).toContain('Components   0')
   })
 
   it('gives bun its own message', async () => {
     const { code, err } = await run(['scan', fixture('detect/bun')])
     expect(code).toBe(2)
-    expect(err).toContain('Bun projects are not supported yet')
+    expect(err).toContain('Bun projects are not supported')
+    expect(err).toContain('--package-lock-only')
   })
+
+  it.each(['pnpm-basic', 'yarn-classic-basic', 'yarn-berry-basic'])(
+    'scans a %s project end to end',
+    async (name) => {
+      const dir = await outputDir()
+      const { code } = await run(['scan', fixture(name), '--output-dir', dir, '--offline'])
+      expect(code).toBe(0)
+
+      const bom = JSON.parse(await readFile(join(dir, 'sbom.cdx.json'), 'utf8')) as CdxBom
+      expect(validateBom(bom, '1.6').errors).toEqual([])
+      expect(bom.components).toHaveLength(3)
+      expect(bom.metadata.properties).toContainEqual({
+        name: 'cradle:packageManager',
+        value: name.startsWith('pnpm') ? 'pnpm' : name.replace('-basic', ''),
+      })
+    },
+  )
 
   it('reports a missing lockfile as a tool error, not a finding', async () => {
     const { code, err } = await run(['scan', fixture('detect/no-lockfile')])

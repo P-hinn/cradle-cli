@@ -193,9 +193,45 @@ Ohne Argumente im Projektverzeichnis:
 **Dependency-Graph auflösen.** Paketmanager anhand der Lockfile erkennen
 (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`). Für npm
 `@npmcli/arborist`. Für pnpm und Yarn die Lockfile direkt parsen — das sind **drei**
-Parser, nicht zwei: pnpm v9 (`packages` + `snapshots` getrennt), Yarn Classic
-(eigenes Textformat) und Yarn Berry (YAML mit `__metadata`). Bun ist im MVP ein
-klarer „nicht unterstützt"-Fehler mit Handlungsanweisung.
+Parser, nicht zwei: pnpm v9/v10 (`packages` + `snapshots` getrennt), Yarn Classic
+(eigenes Textformat) und Yarn Berry (YAML mit `__metadata`). Bun ist ein klarer
+„nicht unterstützt"-Fehler mit Handlungsanweisung.
+
+Alle vier Parser münden in dieselbe Zwischendarstellung (`core/resolve/graph.ts`),
+damit prod/dev-Trennung, `bom-ref`-Vergabe und Komponentenbau einmal geschrieben
+sind und sich überall gleich verhalten. Der Test, der zählt, ist die Äquivalenz:
+vier Fixtures mit identischen Abhängigkeiten müssen identische Komponenten und
+identische Kanten liefern.
+
+Was pro Format zu beachten war:
+
+| | prod/dev in der Lockfile? | Integrity? | Lizenzen? |
+|---|---|---|---|
+| npm | ja | ja (SRI) | ja, ab lockfileVersion 2 |
+| pnpm | ja, pro Importer | ja (SRI) | **nein** |
+| Yarn Classic | **nein** | ja (SRI) | **nein** |
+| Yarn Berry | **nein** | **nein** (siehe unten) | **nein** |
+
+* **prod/dev wird für Yarn abgeleitet.** Classic kennt gar keine Markierung, Berry
+  faltet die dev-Abhängigkeiten des Roots mit den übrigen zusammen. Also wird für
+  alle Ökosysteme gleich gerechnet: einmal von den Produktions-Abhängigkeiten aus
+  laufen, einmal von den Entwicklungs-Abhängigkeiten, und „dev" ist, was der erste
+  Lauf nicht erreicht hat.
+* **Yarn Berrys `checksum` ist kein Tarball-Hash.** Er ist sha512-groß und sieht
+  aus wie ein Integrity-Wert, ist aber Yarns eigener Cache-Schlüssel über Yarns
+  eigenes Archivformat: für dasselbe Paket notiert npm `4162e5d8…` und Yarn
+  `6d43a916…`. Ihn als CycloneDX-SHA-512 auszugeben wäre eine plausibel
+  aussehende Lüge — Berry-SBOMs tragen deshalb **keine** Hashes.
+* **pnpm-Snapshot-Schlüssel tragen den Peer-Kontext** (`debug@4.3.7(supports-color@7.2.0)`).
+  Der muss abgeschnitten werden, sonst ist dasselbe Paket unter zwei Peer-Sets
+  zwei Komponenten.
+* **pnpm-Lockfiles vor v9 werden abgelehnt.** Vor v9 gab es die
+  `packages`/`snapshots`-Trennung nicht; der alte Aufbau würde in einen leeren
+  Baum parsen und wie ein Projekt ohne Abhängigkeiten aussehen.
+* **Lizenzen kommen bei pnpm und Yarn von der Platte** (`node_modules`), wie in §4
+  entschieden. Fehlt sie — frischer Klon, oder Yarn PnP — steht „unbekannt", und
+  der Readiness-Check führt es als offenen Punkt. Kein stiller Netzzugriff, keine
+  erfundene Antwort.
 
 Direkte und transitive Abhängigkeiten werden unterschieden, ebenso Production und
 Development. **Der Default-Scan umfasst nur Production-Dependencies**, weil das der
@@ -526,7 +562,12 @@ nichts direkt auf die Platte oder die Konsole. Dateizugriff und Ausgabe passiere
   | `npm-basic` | Scoped Package, transitive Kette, prod/dev-Trennung |
   | `npm-workspaces` | Workspace-Links, automatisch installierter Peer-Dep, Paket ohne Lizenzfeld, privates Root |
   | `npm-duplicates` | Dasselbe Paket zweimal im Baum, verschachtelt unter einem Dependent |
+  | `pnpm-basic`, `yarn-classic-basic`, `yarn-berry-basic` | Dieselben Abhängigkeiten wie `npm-basic`, damit die vier Parser gegeneinander geprüft werden können |
   | `detect/*` | Lockfile-Erkennung für npm, pnpm, Yarn Classic, Yarn Berry, Bun, sowie fehlende Lockfile und Nicht-Projekt |
+
+  Die pnpm- und Yarn-Fixtures tragen ein eingechecktes `node_modules` aus **nur
+  `package.json`-Dateien** — kein Code —, weil ihre Lockfiles keine Lizenzen
+  führen. Damit laufen die Tests offline und deterministisch ohne Installation.
 
 - Fixtures enthalten nur `package.json` und Lockfile, kein installiertes
   `node_modules`. Wo ein Parser Daten von der Platte braucht (pnpm, Yarn), wird

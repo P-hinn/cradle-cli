@@ -1,0 +1,10 @@
+{
+  "name": "acme-pnpm",
+  "version": "1.4.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fixture: pnpm v9 lockfile with scoped, transitive and dev deps.",
+  "packageManager": "pnpm@9.6.0",
+  "dependencies": { "@sindresorhus/is": "7.0.1", "debug": "4.3.7" },
+  "devDependencies": { "chalk": "4.1.2" }
+}

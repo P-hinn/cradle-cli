@@ -1,0 +1,15 @@
+{
+  "name": "acme-yarn-berry",
+  "version": "3.2.1",
+  "private": true,
+  "license": "MIT",
+  "description": "Fixture: Yarn Berry lockfile with the node-modules linker.",
+  "packageManager": "yarn@4.5.0",
+  "dependencies": {
+    "@sindresorhus/is": "7.0.1",
+    "debug": "4.3.7"
+  },
+  "devDependencies": {
+    "chalk": "4.1.2"
+  }
+}
