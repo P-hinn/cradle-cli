@@ -13,7 +13,9 @@
  *
  *   node scripts/gen-demo-svg.mjs
  */
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
+
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
 /** A dark card reads the same under GitHub's light and dark themes. */
 const THEME = {
@@ -46,7 +48,10 @@ const CHROME_HEIGHT = 34
 const SESSION = [
   { text: '$ npx cradle-cli scan', style: 'command' },
   { text: '', style: null },
-  { text: 'cradle 0.1.0 · acme-express-service 2.1.0 · npm · production only', style: 'dim' },
+  {
+    text: `cradle ${version} · acme-express-service 2.1.0 · npm · production only`,
+    style: 'dim',
+  },
   { text: '', style: null },
   { text: '  Components   4 (3 direct, 1 transitive)', style: null },
   { text: '  Licences     4 known, 0 unknown', style: null },

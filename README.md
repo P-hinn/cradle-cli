@@ -124,7 +124,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - uses: P-hinn/cradle-cli@v0.1.0
+      - uses: P-hinn/cradle-cli@v0.1.2
         with:
           fail-on: high
           upload-artifact: true

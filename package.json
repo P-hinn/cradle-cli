@@ -46,13 +46,15 @@
   ],
   "scripts": {
     "build": "tsdown",
+    "prebuild": "node scripts/sync-version.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --error-on-warnings .",
     "lint:fix": "biome check --write --error-on-warnings .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prebuild": "node scripts/gen-version.mjs",
-    "generate": "node scripts/gen-spdx-ids.mjs && node scripts/gen-version.mjs && node scripts/gen-demo-svg.mjs",
+    "generate": "node scripts/gen-spdx-ids.mjs && node scripts/sync-version.mjs",
+    "sync-version": "node scripts/sync-version.mjs",
+    "version": "node scripts/sync-version.mjs && git add -A",
     "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {

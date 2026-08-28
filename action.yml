@@ -16,7 +16,7 @@ inputs:
       Version of cradle-cli to run. Defaults to the release this action tag was
       cut from, so a pinned action means a pinned tool. Set it to `latest` to
       track releases without moving the action tag.
-    default: '0.1.0'
+    default: '0.1.2'
   fail-on:
     description: >-
       Fail at or above this severity: critical, high, medium, low, or never to
