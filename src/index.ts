@@ -16,7 +16,16 @@ export {
 } from './core/baseline/diff.js'
 export { CradleError } from './core/errors.js'
 export { type Detection, detectPackageManager } from './core/resolve/detect.js'
+export { buildGraph, type RawPackage, type RootManifest } from './core/resolve/graph.js'
+export { readManifest } from './core/resolve/manifest.js'
 export { type ResolveNpmOptions, resolveNpm } from './core/resolve/npm.js'
+export { type ResolvePnpmOptions, resolvePnpm } from './core/resolve/pnpm.js'
+export {
+  parseBerryLockfile,
+  parseClassicLockfile,
+  type ResolveYarnOptions,
+  resolveYarn,
+} from './core/resolve/yarn.js'
 export { assignBomRefs, type BomRefCandidate } from './core/sbom/bomref.js'
 export { type BuildBomOptions, buildBom } from './core/sbom/cyclonedx.js'
 export { parseIntegrity } from './core/sbom/hash.js'

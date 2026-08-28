@@ -137,10 +137,33 @@ Jede neue Abhängigkeit wird vorher begründet.
 
 | Paket | Begründung |
 |---|---|
-| `@npmcli/arborist` | Der einzige Weg zum echten aufgelösten npm-Baum. Auf `^9.9.1` gepinnt: v10 verlangt `^22.22.2 || ^24.15.0 || >=26` und schließt damit auch verbreitete 24.x-Stände aus. Wechsel auf v10, wenn sich das Feld bewegt hat. |
 | `packageurl-js` | purl-Encoding ist subtil (Scopes, Qualifier); offizielle Implementierung |
 | `yaml` | pnpm-Lockfile und Yarn Berry |
 | `spdx-expression-parse` | Lizenzausdrücke validieren statt Strings durchreichen |
+| `semver` | Korrekte Versionsordnung inkl. Prereleases für die Fix-Auswahl |
+
+**`@npmcli/arborist` wurde vor dem Release wieder entfernt.** Es lieferte den
+richtigen Baum, brachte aber **115 eigene transitive Abhängigkeiten** mit — bei
+einem Werkzeug, dessen Thema Größe und Herkunft von Abhängigkeitsbäumen ist, war
+das nicht zu rechtfertigen. Die `packages`-Map von `package-lock.json` ab
+lockfileVersion 2 *ist* der materialisierte Baum: Pfade, aufgelöste Versionen,
+Integrity und seit v2 auch Lizenzen. Kanten folgen Nodes eigener
+Auflösungsregel — vom Ort des Abhängigen die `node_modules`-Kette hochlaufen.
+Genau das lässt ein doppelt installiertes Paket auf die richtige Kopie zeigen.
+
+Belegt ist die Gleichwertigkeit durch Snapshots von Arborists eigener Ausgabe,
+aufgenommen bevor es entfernt wurde (`test/fixtures/expected/`), plus einen
+Vergleich auf dem echten 248-Paket-Baum dieses Repos. Bilanz:
+
+| | mit arborist | ohne |
+|---|---|---|
+| Produktions-Komponenten | 118 | **6** |
+| `node_modules` (prod) | 22 MB | **1,7 MB** |
+| Pakete auf der Platte | 88 | **6** |
+
+Nicht gebündelt wird bewusst: die vier verbliebenen Abhängigkeiten bleiben extern
+und damit unabhängig von einem cradle-Release aktualisierbar. Das ist für ein
+Supply-Chain-Werkzeug wichtiger als eine Null-Dependency-Zahl.
 
 Bewusst **nicht** als Dependency, sondern selbst geschrieben:
 

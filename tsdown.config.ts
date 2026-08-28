@@ -8,6 +8,4 @@ export default defineConfig({
   clean: true,
   // The package is type:module, so plain .js is the idiomatic extension.
   outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-  // Runtime deps stay external; arborist in particular must not be bundled.
-  deps: { neverBundle: ['@npmcli/arborist'] },
 })

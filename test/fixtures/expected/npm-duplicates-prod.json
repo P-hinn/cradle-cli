@@ -1,0 +1,101 @@
+{
+  "packageManager": "npm",
+  "includeDev": false,
+  "workspaces": [],
+  "root": {
+    "name": "acme-duplicates",
+    "version": "1.0.0",
+    "purl": null
+  },
+  "components": [
+    {
+      "bomRef": "pkg:npm/debug@4.3.7",
+      "name": "debug",
+      "version": "4.3.7",
+      "purl": "pkg:npm/debug@4.3.7",
+      "licenses": [
+        {
+          "kind": "id",
+          "id": "MIT"
+        }
+      ],
+      "licenseUnknown": false,
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "12bda773f1fb46b3176411421229ba4c298c934d99f2f2c2d916e2d4a101820a68d1f4ba9744b59e76a9c26222df25bff863896a9d4aae0e30d0783cd280aa81"
+        }
+      ],
+      "direct": true,
+      "dev": false,
+      "workspace": false
+    },
+    {
+      "bomRef": "pkg:npm/ms@2.0.0",
+      "name": "ms",
+      "version": "2.0.0",
+      "purl": "pkg:npm/ms@2.0.0",
+      "licenses": [
+        {
+          "kind": "id",
+          "id": "MIT"
+        }
+      ],
+      "licenseUnknown": false,
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "4e9a7ad0fe885090d3b8eabfe59f1c76c93326e8dfc2a7ce4e4af02308fb211212a679099d3e92c89e0f08f9c63281630bd75d85a979295218b40b7dee2c74e4"
+        }
+      ],
+      "direct": true,
+      "dev": false,
+      "workspace": false
+    },
+    {
+      "bomRef": "pkg:npm/ms@2.1.3",
+      "name": "ms",
+      "version": "2.1.3",
+      "purl": "pkg:npm/ms@2.1.3",
+      "licenses": [
+        {
+          "kind": "id",
+          "id": "MIT"
+        }
+      ],
+      "licenseUnknown": false,
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "e85973b9b4cb646dc9d9afcd542025784863ceae68c601f268253dc985ef70bb2fa1568726afece715c8ebf5d73fab73ed1f7100eb479d23bfb57b45dd645394"
+        }
+      ],
+      "direct": false,
+      "dev": false,
+      "workspace": false
+    }
+  ],
+  "edges": [
+    [
+      "pkg:npm/acme-duplicates@1.0.0",
+      [
+        "pkg:npm/debug@4.3.7",
+        "pkg:npm/ms@2.0.0"
+      ]
+    ],
+    [
+      "pkg:npm/debug@4.3.7",
+      [
+        "pkg:npm/ms@2.1.3"
+      ]
+    ],
+    [
+      "pkg:npm/ms@2.0.0",
+      []
+    ],
+    [
+      "pkg:npm/ms@2.1.3",
+      []
+    ]
+  ]
+}
