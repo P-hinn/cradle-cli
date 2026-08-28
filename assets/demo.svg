@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="633" height="575" viewBox="0 0 633 575" role="img" aria-label="Terminal session: npx cradle-cli scan reports 4 components and 8 findings, then npx cradle-cli check exits 1 on findings above the threshold.">
+  <rect width="633" height="575" rx="8" fill="#12161b" stroke="#2b333d"/>
+  <path d="M0 8 a8 8 0 0 1 8 -8 h617 a8 8 0 0 1 8 8 v26 h-633 z" fill="#1b2129"/>
+  <line x1="0" y1="34" x2="633" y2="34" stroke="#2b333d"/>
+  <circle cx="20" cy="17" r="5" fill="#e06c62"/>
+  <circle cx="38" cy="17" r="5" fill="#e0b562"/>
+  <circle cx="56" cy="17" r="5" fill="#7fc08a"/>
+  <text x="316.5" y="21" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, &#34;SF Mono&#34;, Menlo, Consolas, &#34;Liberation Mono&#34;, monospace" font-size="11" fill="#7d8b99">acme-express-service</text>
+  <g font-family="ui-monospace, SFMono-Regular, &#34;SF Mono&#34;, Menlo, Consolas, &#34;Liberation Mono&#34;, monospace" font-size="13">
+  <text x="20" y="62" fill="#5aa9e6">$</text><text x="36.04" y="62" fill="#e6edf3">npx&#160;cradle-cli&#160;scan</text>
+  <text x="20" y="100" fill="#7d8b99">cradle&#160;0.1.0&#160;·&#160;acme-express-service&#160;2.1.0&#160;·&#160;npm&#160;·&#160;production&#160;only</text>
+  <text x="20" y="138" fill="#c9d3de">&#160;&#160;Components&#160;&#160;&#160;4&#160;(3&#160;direct,&#160;1&#160;transitive)</text>
+  <text x="20" y="157" fill="#c9d3de">&#160;&#160;Licences&#160;&#160;&#160;&#160;&#160;4&#160;known,&#160;0&#160;unknown</text>
+  <text x="20" y="176" fill="#f0a868">&#160;&#160;Findings&#160;&#160;&#160;&#160;&#160;8&#160;(1&#160;critical,&#160;3&#160;high,&#160;4&#160;medium)</text>
+  <text x="20" y="195" fill="#c9d3de">&#160;&#160;CRA&#160;checks&#160;&#160;&#160;4&#160;met,&#160;2&#160;partial</text>
+  <text x="20" y="214" fill="#9ecbff">&#160;&#160;Report&#160;&#160;&#160;&#160;&#160;&#160;&#160;.cradle/report.html</text>
+  <text x="20" y="233" fill="#c9d3de">&#160;&#160;Output&#160;&#160;&#160;&#160;&#160;&#160;&#160;.cradle/&#160;·&#160;CycloneDX&#160;1.6</text>
+  <text x="20" y="271" fill="#c9d3de">&#160;&#160;Next&#160;steps</text>
+  <text x="20" y="290" fill="#7d8b99">&#160;&#160;&#160;&#160;·&#160;minimist&#160;1.2.0&#160;-&gt;&#160;1.2.6&#160;&#160;(clears&#160;2&#160;findings,&#160;worst&#160;critical,&#160;direct)</text>
+  <text x="20" y="309" fill="#7d8b99">&#160;&#160;&#160;&#160;·&#160;lodash&#160;4.17.15&#160;-&gt;&#160;4.18.0&#160;&#160;(clears&#160;6&#160;findings,&#160;worst&#160;high,&#160;direct)</text>
+  <text x="20" y="347" fill="#5aa9e6">$</text><text x="36.04" y="347" fill="#e6edf3">npx&#160;cradle-cli&#160;check&#160;--fail-on&#160;high</text>
+  <text x="20" y="385" fill="#c9d3de">&#160;&#160;New&#160;since&#160;the&#160;baseline</text>
+  <text x="20" y="404" fill="#f47c7c">&#160;&#160;&#160;&#160;critical&#160;GHSA-xvch-5gv4-984h&#160;&#160;minimist&#160;1.2.0&#160;&#160;(fix&#160;in&#160;1.2.6)</text>
+  <text x="20" y="423" fill="#f0a868">&#160;&#160;&#160;&#160;high&#160;&#160;&#160;&#160;&#160;GHSA-35jh-r3h4-6jhm&#160;&#160;lodash&#160;4.17.15&#160;&#160;(fix&#160;in&#160;4.17.21)</text>
+  <text x="20" y="442" fill="#f0a868">&#160;&#160;&#160;&#160;high&#160;&#160;&#160;&#160;&#160;GHSA-p6mc-m468-83gw&#160;&#160;lodash&#160;4.17.15&#160;&#160;(fix&#160;in&#160;4.17.19)</text>
+  <text x="20" y="461" fill="#7d8b99">&#160;&#160;&#160;&#160;…</text>
+  <text x="20" y="499" fill="#f47c7c">&#160;&#160;Failing:&#160;4&#160;new&#160;findings&#160;at&#160;or&#160;above&#160;high.</text>
+  <text x="20" y="537" fill="#5aa9e6">$</text><text x="36.04" y="537" fill="#e6edf3">echo&#160;$?</text>
+  <text x="20" y="556" fill="#c9d3de">1</text>
+  </g>
+</svg>
