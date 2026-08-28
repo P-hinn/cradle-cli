@@ -313,7 +313,39 @@ bewusst etwas unbequem — genau diese Kategorien machen eine Unterdrückung
 auditierbar statt zu einem stillen Ignorieren.
 
 `--expires <datum>` lässt Unterdrückungen ablaufen; sie erscheinen im Report als
-„läuft in 12 Tagen ab". Abgelaufene Unterdrückungen greifen nicht mehr.
+„läuft in 12 Tagen ab", und die Konsole warnt 30 Tage vorher. Abgelaufene
+Unterdrückungen greifen nicht mehr — genau das ist der Zweck: eine Entscheidung
+über eine Abhängigkeit soll erneuert werden müssen, statt still ihre Begründung
+zu überleben. Das abgelaufene Statement bleibt am Finding hängen, damit der
+Report „ist ausgelaufen" sagen kann und das Finding nicht ohne Vorgeschichte
+wieder auftaucht.
+
+**Abweichung vom Standard:** OpenVEX kennt kein Ablaufdatum. Deshalb steht es als
+`cradle:expires` am Statement — mit Präfix, damit es erkennbar keine
+OpenVEX-Eigenschaft ist und konforme Konsumenten es ignorieren. Alles andere in
+`vex.json` ist reines OpenVEX v0.2.0.
+
+Weitere umgesetzte Details:
+
+* **Autor ist Pflicht.** OpenVEX verlangt ihn, und eine unsignierte
+  Unterdrückung ist im Audit wenig wert. Default ist `git config user.email`;
+  fehlt beides, bricht der Befehl mit einer Handlungsanweisung ab.
+* **Identifikation über GHSA *oder* CVE.** Leute notieren sich die CVE, über die
+  sie gelesen haben; OSV schlüsselt npm-Advisories nach GHSA. Beides wird
+  akzeptiert, geschrieben wird die von cradle geführte ID plus `aliases`.
+* **`--component` ist Pflicht, sobald mehrere Komponenten betroffen sind.** Nur
+  über die Advisory-ID zu unterdrücken würde die Schwachstelle überall stumm
+  schalten — genau die pauschale Abtuung, die VEX verhindern soll.
+* **Wiederholtes `suppress` ersetzt das Statement,** statt ein zweites
+  anzuhängen. Eine Korrektur soll als Korrektur lesbar sein, nicht als zwei
+  widersprüchliche Aussagen.
+* **Eine kaputte `vex.json` bricht den Scan ab.** Sie stillschweigend zu
+  überspringen hieße, Findings erneut zu melden, über die das Team längst
+  entschieden hat.
+* **Unterdrückte Findings bleiben im Report und in `findings.json`,** getrennt
+  ausgewiesen. Ein Prüfer muss der Entscheidung widersprechen können.
+* **Statements, die auf nichts passen,** werden gemeldet — meist wurde das
+  Finding durch ein Update behoben und das Statement ist Altlast.
 
 `.cradle/vex.json` gehört ins Git-Repo des Nutzers und ist der eigentliche Wert, der
 über die Zeit entsteht.

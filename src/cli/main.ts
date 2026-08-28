@@ -1,6 +1,7 @@
 import { CradleError } from '../core/errors.js'
 import { TOOL_VERSION } from '../version.generated.js'
 import { runScan, type ScanDependencies } from './scan.js'
+import { runSuppress, type SuppressDependencies } from './suppress.js'
 
 const HELP = `cradle — SBOM, findings and a CRA readiness report for npm projects
 
@@ -10,7 +11,7 @@ Usage:
 Commands:
   scan        Resolve dependencies and write an SBOM to .cradle/
   check       Like scan, with baseline comparison and CI exit codes  (not yet implemented)
-  suppress    Record an OpenVEX statement for a finding              (not yet implemented)
+  suppress    Record why a finding does not apply, as an OpenVEX statement
 
 Options:
   -h, --help      Show this help
@@ -28,7 +29,7 @@ export async function main(
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
   /** Injection point for tests; production passes nothing. */
-  dependencies: ScanDependencies = {},
+  dependencies: ScanDependencies & SuppressDependencies = {},
 ): Promise<number> {
   const [command, ...rest] = argv
 
@@ -45,11 +46,12 @@ export async function main(
     switch (command) {
       case 'scan':
         return await runScan(rest, stdout, dependencies)
-      case 'check':
       case 'suppress':
+        return await runSuppress(rest, stdout, dependencies)
+      case 'check':
         throw new CradleError(
-          `'cradle ${command}' is not implemented yet`,
-          "Only 'cradle scan' works today. See SPEC.md for the planned order of work.",
+          "'cradle check' is not implemented yet",
+          "Use 'cradle scan' for now. See SPEC.md for the planned order of work.",
         )
       default:
         stderr.write(

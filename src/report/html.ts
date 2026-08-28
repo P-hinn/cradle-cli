@@ -9,7 +9,7 @@ import type {
   ResolvedLicense,
   Severity,
 } from '../types/index.js'
-import { SEVERITY_ORDER } from '../types/index.js'
+import { SEVERITY_ORDER, VEX_JUSTIFICATION_TEXT } from '../types/index.js'
 import { REPORT_JS } from './behaviour.js'
 import { embedJson, escapeHtml, safeUrl } from './escape.js'
 import { REPORT_CSS } from './styles.js'
@@ -17,6 +17,8 @@ import { REPORT_CSS } from './styles.js'
 export interface ReportInput {
   graph: DependencyGraph
   findings: readonly Finding[]
+  /** Findings a live VEX statement has ruled out. Shown, never hidden. */
+  suppressed?: readonly Finding[]
   /** ISO 8601 timestamp of the scan. */
   timestamp: string
   offline: boolean
@@ -65,6 +67,7 @@ export function buildReport(input: ReportInput): string {
 ${masthead(input)}
 ${summarySection(input)}
 ${findingsSection(input)}
+${suppressedSection(input)}
 ${componentsSection(graph)}
 ${colophon(input)}
 </div>
@@ -138,6 +141,11 @@ function summarySection(input: ReportInput): string {
       unknownLicence === 0 ? 'all components declare one' : `${unknownLicence} undeclared`,
     ),
   ]
+
+  const suppressedCount = (input.suppressed ?? []).length
+  if (suppressedCount > 0) {
+    cards.push(card('Suppressed', String(suppressedCount), 'ruled out by a VEX statement'))
+  }
 
   return `<section>
 <h2>Summary</h2>
@@ -333,6 +341,67 @@ function severityProvenance(finding: Finding): string {
 }
 
 // ---------------------------------------------------------------------------
+// Suppressed findings
+// ---------------------------------------------------------------------------
+
+/**
+ * Suppressed findings are shown, never hidden.
+ *
+ * A suppression is a decision someone made and signed their name to, and the
+ * whole reason for recording the category is that a reviewer can disagree with
+ * it. A report that quietly dropped them would be worth less than one that never
+ * had VEX at all.
+ */
+function suppressedSection(input: ReportInput): string {
+  const suppressed = input.suppressed ?? []
+  if (suppressed.length === 0) return ''
+
+  return `<h2>Suppressed <span class="count">${suppressed.length}</span></h2>
+<p class="section-note">These findings are not counted above, because a VEX statement in this repository rules them out. The category is the auditable part; the note is the reasoning.</p>
+<div class="scroll"><table>
+<thead><tr><th>Severity</th><th>Advisory</th><th>Package</th><th>Justification</th><th>Expires</th></tr></thead>
+<tbody>
+${suppressed.map(suppressedRow).join('\n')}
+</tbody>
+</table></div>`
+}
+
+function suppressedRow(finding: Finding): string {
+  const suppression = finding.suppression
+  const justification = suppression?.justification
+  const osvUrl = safeUrl(finding.osvUrl)
+
+  const reason =
+    justification === undefined
+      ? `<em>${escapeHtml(suppression?.status ?? 'suppressed')}</em>`
+      : `<code>${escapeHtml(justification)}</code><div class="pathline">${escapeHtml(VEX_JUSTIFICATION_TEXT[justification])}</div>`
+  const note =
+    suppression?.notes === undefined
+      ? ''
+      : `<div class="pathline">${escapeHtml(suppression.notes)}</div>`
+
+  const expiry = renderExpiry(suppression?.expires, suppression?.expiresInDays)
+
+  return `  <tr>
+    <td>${severityMark(finding.severity)}</td>
+    <td>${osvUrl === undefined ? `<code>${escapeHtml(finding.id)}</code>` : `<a href="${escapeHtml(osvUrl)}" rel="noopener noreferrer"><code>${escapeHtml(finding.id)}</code></a>`}</td>
+    <td><code>${escapeHtml(finding.component.name)}</code> <span class="mono">${escapeHtml(finding.component.version)}</span></td>
+    <td>${reason}${note}</td>
+    <td>${expiry}</td>
+  </tr>`
+}
+
+function renderExpiry(expires: string | undefined, inDays: number | undefined): string {
+  if (expires === undefined) return '<span class="tag">no expiry</span>'
+  const date = escapeHtml(formatDate(expires))
+  if (inDays === undefined) return `<span class="mono">${date}</span>`
+  if (inDays < 0) return `<span class="mono">${date}</span><div class="pathline">lapsed</div>`
+
+  const when = inDays === 0 ? 'today' : inDays === 1 ? 'in 1 day' : `in ${inDays} days`
+  return `<span class="mono">${date}</span><div class="pathline">${escapeHtml(when)}</div>`
+}
+
+// ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
 
@@ -410,6 +479,7 @@ ${embedJson({
   sbom: { specVersion: input.specVersion, serialNumber: input.serialNumber },
   components: input.graph.components,
   findings: input.findings,
+  suppressed: input.suppressed ?? [],
 })}
 </script>`
 }

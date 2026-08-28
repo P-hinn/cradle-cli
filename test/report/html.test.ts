@@ -124,6 +124,73 @@ describe('buildReport — no findings', () => {
   })
 })
 
+describe('buildReport — suppressed findings', () => {
+  it('shows them rather than hiding them', async () => {
+    // A suppression is a decision someone signed their name to; the report has
+    // to let a reviewer disagree with it.
+    const { graph, findings } = await scanned('npm-vulnerable')
+    const [first, ...rest] = findings
+    if (first === undefined) throw new Error('fixture has no findings')
+
+    const html = buildReport({
+      ...BASE,
+      graph,
+      findings: rest,
+      suppressed: [
+        {
+          ...first,
+          suppressed: true,
+          suppression: {
+            status: 'not_affected',
+            justification: 'vulnerable_code_not_in_execute_path',
+            notes: 'Only our own CI wrapper parses argv here.',
+            expires: '2026-09-15',
+            expiresInDays: 18,
+            expired: false,
+          },
+        },
+      ],
+    })
+
+    expect(html).toContain('Suppressed')
+    expect(html).toContain('vulnerable_code_not_in_execute_path')
+    // The plain-language gloss, so a reader need not know the standard.
+    expect(html).toContain('The vulnerable code is present but never executed.')
+    expect(html).toContain('Only our own CI wrapper parses argv here.')
+    expect(html).toContain('in 18 days')
+    expect(html).toContain('ruled out by a VEX statement')
+  })
+
+  it('marks an open-ended suppression as such', async () => {
+    const { graph, findings } = await scanned('npm-vulnerable')
+    const [first] = findings
+    if (first === undefined) throw new Error('fixture has no findings')
+
+    const html = buildReport({
+      ...BASE,
+      graph,
+      findings: [],
+      suppressed: [
+        {
+          ...first,
+          suppressed: true,
+          suppression: {
+            status: 'not_affected',
+            justification: 'component_not_present',
+            expired: false,
+          },
+        },
+      ],
+    })
+    expect(html).toContain('no expiry')
+  })
+
+  it('leaves the section out entirely when nothing is suppressed', async () => {
+    const { graph, findings } = await scanned('npm-vulnerable')
+    expect(buildReport({ ...BASE, graph, findings })).not.toContain('<h2>Suppressed')
+  })
+})
+
 describe('buildReport — hostile input', () => {
   const hostile = (findings: Finding[], graph: DependencyGraph): string =>
     buildReport({ ...BASE, graph, findings })

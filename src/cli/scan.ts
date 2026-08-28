@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { CradleError } from '../core/errors.js'
 import { detectPackageManager } from '../core/resolve/detect.js'
 import { resolveNpm } from '../core/resolve/npm.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
+import { applyVex, expiringSoon } from '../core/vex/apply.js'
+import { parseDocument } from '../core/vex/document.js'
 import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
 import { countBySeverity, resolveFindings } from '../core/vulns/findings.js'
 import { queryOsv } from '../core/vulns/osv.js'
@@ -19,6 +22,7 @@ import {
   type FindingsDocument,
   SEVERITY_ORDER,
   SUPPORTED_SPEC_VERSIONS,
+  type VexDocument,
 } from '../types/index.js'
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { cacheDirFor, FileCache } from './cache.js'
@@ -104,6 +108,13 @@ export async function runScan(
     findings = resolveFindings(graph, result.byPackage)
   }
 
+  // Suppressions are applied after the lookup, never instead of it: a suppressed
+  // finding is still recorded, just moved out of the active count.
+  const vex = await loadVex(outputDir)
+  const applied = applyVex(findings, vex, now())
+  findings = applied.active
+  const suppressed = applied.suppressed
+
   const timestamp = now().toISOString()
   const serialNumber = dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
   const bom = buildBom(graph, { specVersion, timestamp, serialNumber })
@@ -118,6 +129,7 @@ export async function runScan(
     offline,
     componentCount: graph.components.length,
     findings,
+    suppressed,
   }
 
   await mkdir(outputDir, { recursive: true })
@@ -132,6 +144,7 @@ export async function runScan(
     buildReport({
       graph,
       findings,
+      suppressed,
       timestamp,
       offline,
       specVersion,
@@ -143,9 +156,31 @@ export async function runScan(
   )
 
   stdout.write(
-    summarize({ graph, findings, specVersion, offline, cacheHits, outputDir, projectDir }),
+    summarize({
+      graph,
+      findings,
+      suppressed,
+      unusedStatements: applied.unmatched.length,
+      expiringSoon: expiringSoon(vex, now()),
+      specVersion,
+      offline,
+      cacheHits,
+      outputDir,
+      projectDir,
+    }),
   )
   return 0
+}
+
+/**
+ * Read `.cradle/vex.json` if the project has one. A broken file is an error, not
+ * something to skip past: silently ignoring it would re-report findings the team
+ * has already ruled on.
+ */
+async function loadVex(outputDir: string): Promise<VexDocument | undefined> {
+  const path = join(outputDir, 'vex.json')
+  if (!existsSync(path)) return undefined
+  return parseDocument(await readFile(path, 'utf8'), path)
 }
 
 function isSpecVersion(value: string | undefined): value is CycloneDxSpecVersion {
@@ -170,6 +205,9 @@ function unsupportedManager(manager: string, lockfile: string): CradleError {
 interface SummaryInput {
   graph: DependencyGraph
   findings: Finding[]
+  suppressed: Finding[]
+  unusedStatements: number
+  expiringSoon: { inDays: number }[]
   specVersion: CycloneDxSpecVersion
   offline: boolean
   cacheHits: number
@@ -201,6 +239,9 @@ function summarize(input: SummaryInput): string {
       .map((s) => `${counts.get(s) ?? 0} ${s}`)
       .join(', ')
     lines.push(`  Findings     ${findings.length}${breakdown === '' ? '' : ` (${breakdown})`}`)
+    if (input.suppressed.length > 0) {
+      lines.push(`  Suppressed   ${input.suppressed.length} by VEX statements`)
+    }
   }
 
   lines.push(`  Report       ${relative(join(input.outputDir, 'report.html'))}`)
@@ -237,6 +278,23 @@ function summarize(input: SummaryInput): string {
       lines.push('  `cradle suppress` will record one with an auditable justification.')
       lines.push('')
     }
+  }
+
+  const lapsing = input.expiringSoon
+  if (lapsing.length > 0) {
+    const soonest = lapsing[0]?.inDays ?? 0
+    const when = soonest === 0 ? 'today' : soonest === 1 ? 'tomorrow' : `in ${soonest} days`
+    const label = lapsing.length === 1 ? 'suppression expires' : 'suppressions expire'
+    lines.push(`  ! ${lapsing.length} ${label} soon, the first ${when}.`)
+    lines.push('')
+  }
+
+  if (input.unusedStatements > 0) {
+    const label = input.unusedStatements === 1 ? 'VEX statement matches' : 'VEX statements match'
+    lines.push(
+      `  ${input.unusedStatements} ${label} nothing in this scan — likely fixed by an upgrade.`,
+    )
+    lines.push('')
   }
 
   if (unknownLicence.length > 0) {

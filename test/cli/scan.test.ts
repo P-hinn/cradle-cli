@@ -231,10 +231,8 @@ describe('cradle — dispatch', () => {
   })
 
   it('admits which commands are not built yet', async () => {
-    for (const command of ['check', 'suppress']) {
-      const { code, err } = await run([command])
-      expect(code).toBe(2)
-      expect(err).toContain('not implemented yet')
-    }
+    const { code, err } = await run(['check'])
+    expect(code).toBe(2)
+    expect(err).toContain('not implemented yet')
   })
 })

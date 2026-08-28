@@ -201,6 +201,13 @@ export interface Finding {
   osvUrl: string
   published?: string
   modified?: string
+  /**
+   * True when a live VEX statement takes this finding out of the count. An
+   * expired statement leaves this false — that is the point of an expiry date.
+   */
+  suppressed?: boolean
+  /** Present whenever a statement matched, including an expired one. */
+  suppression?: Suppression
 }
 
 export interface FindingsDocument {
@@ -214,6 +221,97 @@ export interface FindingsDocument {
   offline: boolean
   componentCount: number
   findings: Finding[]
+  /**
+   * Findings a VEX statement takes out of the count. Kept in the document rather
+   * than dropped, because "we looked at this and decided it does not apply" is
+   * exactly what an audit wants to see.
+   */
+  suppressed: Finding[]
+}
+
+// ---------------------------------------------------------------------------
+// VEX (OpenVEX v0.2.0)
+// ---------------------------------------------------------------------------
+
+export const OPENVEX_CONTEXT = 'https://openvex.dev/ns/v0.2.0'
+
+export type VexStatus = 'not_affected' | 'affected' | 'fixed' | 'under_investigation'
+
+/**
+ * The only justifications OpenVEX defines. Free text is available in addition
+ * through `status_notes`, but the category is mandatory — that is what makes a
+ * suppression auditable instead of a silent dismissal.
+ */
+export const VEX_JUSTIFICATIONS = [
+  'component_not_present',
+  'vulnerable_code_not_present',
+  'vulnerable_code_not_in_execute_path',
+  'vulnerable_code_cannot_be_controlled_by_adversary',
+  'inline_mitigations_already_exist',
+] as const
+
+export type VexJustification = (typeof VEX_JUSTIFICATIONS)[number]
+
+/** Plain-language gloss for each justification, for the report and the CLI. */
+export const VEX_JUSTIFICATION_TEXT: Record<VexJustification, string> = {
+  component_not_present: 'The vulnerable component is not in the delivered product.',
+  vulnerable_code_not_present: 'The component is present, but the vulnerable code is not.',
+  vulnerable_code_not_in_execute_path: 'The vulnerable code is present but never executed.',
+  vulnerable_code_cannot_be_controlled_by_adversary:
+    'The vulnerable code executes, but an attacker cannot reach or influence it.',
+  inline_mitigations_already_exist: 'Existing mitigations already prevent exploitation.',
+}
+
+export interface VexProduct {
+  '@id': string
+  subcomponents?: { '@id': string }[]
+}
+
+export interface VexStatement {
+  '@id'?: string
+  vulnerability: { name: string; '@id'?: string; description?: string; aliases?: string[] }
+  timestamp?: string
+  last_updated?: string
+  products?: VexProduct[]
+  status: VexStatus
+  justification?: VexJustification
+  impact_statement?: string
+  action_statement?: string
+  action_statement_timestamp?: string
+  status_notes?: string
+  /**
+   * NOT part of OpenVEX — the specification has no notion of expiry. Namespaced
+   * so it reads as an extension and so conforming consumers ignore it. See
+   * SPEC.md §6.3.
+   */
+  'cradle:expires'?: string
+}
+
+export interface VexDocument {
+  '@context': typeof OPENVEX_CONTEXT
+  '@id': string
+  author: string
+  role?: string
+  timestamp: string
+  last_updated?: string
+  version: number
+  tooling?: string
+  statements: VexStatement[]
+}
+
+/** What a VEX statement means for one finding, once expiry has been applied. */
+export interface Suppression {
+  statementId?: string
+  status: VexStatus
+  justification?: VexJustification
+  /** The human explanation from `status_notes`, when there is one. */
+  notes?: string
+  actionStatement?: string
+  expires?: string
+  /** Negative once the date has passed. */
+  expiresInDays?: number
+  /** True when the statement has lapsed and therefore no longer applies. */
+  expired: boolean
 }
 
 // ---------------------------------------------------------------------------

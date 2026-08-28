@@ -15,6 +15,14 @@ export { type BuildBomOptions, buildBom } from './core/sbom/cyclonedx.js'
 export { parseIntegrity } from './core/sbom/hash.js'
 export { normalizeLicense, toCycloneDx } from './core/sbom/license.js'
 export { npmPurl } from './core/sbom/purl.js'
+export { applyVex, expiringSoon, type VexApplication } from './core/vex/apply.js'
+export {
+  emptyDocument,
+  isJustification,
+  parseDocument,
+  serializeDocument,
+  upsertStatement,
+} from './core/vex/document.js'
 export { MemoryCache, NULL_CACHE, type VulnCache } from './core/vulns/cache.js'
 export { type CvssScore, scoreCvssV3 } from './core/vulns/cvss.js'
 export { countBySeverity, resolveFindings } from './core/vulns/findings.js'
