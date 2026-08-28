@@ -344,6 +344,31 @@ to `api.osv.dev` and `registry.npmjs.org` — both skipped by `--offline`. It ru
 recording a decision; `--author` avoids even that. No telemetry.
 [`SECURITY.md`](SECURITY.md) has the full table.
 
+## Releasing
+
+Tagging is the whole process:
+
+```bash
+npm version patch   # or minor - writes package.json and creates the tag
+git push --follow-tags
+```
+
+`.github/workflows/release.yml` takes it from there: it refuses a tag that
+disagrees with `package.json`, runs the full gate, publishes to npm **with a
+provenance attestation**, scans cradle with cradle, and opens a GitHub release
+carrying the changelog section for that version and cradle's own SBOM as an
+asset. A tool that asks people to keep an SBOM should ship one.
+
+The attestation is why publishing happens in CI rather than from a laptop: it is
+cryptographic proof that a given tarball was built from a given commit by a given
+workflow. Publishing by hand produces a package that is fine and proves nothing.
+
+**One-time setup** on npmjs.com, under the package's *Settings → Trusted
+Publisher*: GitHub Actions, repository `P-hinn/cradle-cli`, workflow
+`release.yml`. That removes the need for a token entirely — worth doing before
+January 2027, when npm restricts tokens that bypass 2FA. Without it, set an
+`NPM_TOKEN` secret instead; the workflow accepts either.
+
 ## Contributing
 
 Issues and pull requests welcome. [`SPEC.md`](SPEC.md) is the working
