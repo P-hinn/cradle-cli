@@ -7,11 +7,26 @@
     "cyclonedx",
     "cra",
     "cyber-resilience-act",
-    "npm",
+    "compliance",
+    "vulnerability",
+    "osv",
     "vex",
     "openvex",
-    "osv"
+    "npm",
+    "pnpm",
+    "yarn",
+    "supply-chain",
+    "security"
   ],
+  "homepage": "https://github.com/P-hinn/cradle-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/P-hinn/cradle-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/P-hinn/cradle-cli/issues"
+  },
+  "author": "Philipp Niestroj",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -27,8 +42,7 @@
     }
   },
   "files": [
-    "dist",
-    "SPEC.md"
+    "dist"
   ],
   "scripts": {
     "build": "tsdown",
@@ -38,7 +52,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prebuild": "node scripts/gen-version.mjs",
-    "generate": "node scripts/gen-spdx-ids.mjs && node scripts/gen-version.mjs"
+    "generate": "node scripts/gen-spdx-ids.mjs && node scripts/gen-version.mjs",
+    "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "packageurl-js": "^2.0.1",

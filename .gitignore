@@ -1,6 +1,14 @@
 node_modules/
 dist/
-.cradle/
+# Output, at any depth: fixtures and examples generate their own .cradle too.
+**/.cradle/*
+# The three files that record a decision rather than an observation belong in
+# version control - in this repository as much as in anyone else's. They are
+# listed as **/.cradle/* rather than .cradle/, because git cannot re-include a
+# file whose parent directory is excluded.
+!**/.cradle/config.json
+!**/.cradle/vex.json
+!**/.cradle/baseline.json
 *.tsbuildinfo
 
 # Yarn Berry's install state is a binary cache, not something to review.

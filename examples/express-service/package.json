@@ -1,0 +1,16 @@
+{
+  "name": "acme-express-service",
+  "version": "2.1.0",
+  "private": true,
+  "description": "A deliberately dated service, so cradle has something to report.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "lodash": "4.17.15",
+    "minimist": "1.2.0",
+    "debug": "4.3.7"
+  },
+  "devDependencies": {
+    "chalk": "4.1.2"
+  }
+}
