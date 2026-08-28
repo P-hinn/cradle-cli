@@ -1,0 +1,166 @@
+name: cradle
+description: >-
+  Write a CycloneDX SBOM, look up known vulnerabilities, and fail the build on
+  findings that are new since the baseline.
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Project directory to scan.
+    default: '.'
+  version:
+    description: >-
+      Version of cradle-cli to run. Pin this to a release rather than leaving it
+      at latest if you want reproducible runs.
+    default: latest
+  fail-on:
+    description: >-
+      Fail at or above this severity: critical, high, medium, low, or never to
+      report without failing.
+    default: high
+  include-dev:
+    description: Include development dependencies.
+    default: 'false'
+  offline:
+    description: Skip the vulnerability lookup and produce the SBOM only.
+    default: 'false'
+  no-baseline:
+    description: Ignore .cradle/baseline.json and treat every finding as new.
+    default: 'false'
+  spec-version:
+    description: CycloneDX version to emit, 1.6 or 1.7.
+    default: '1.6'
+  upload-artifact:
+    description: Upload the report, the SBOM and findings.json as a build artifact.
+    default: 'true'
+  artifact-name:
+    description: Name of that artifact.
+    default: cradle-report
+  comment-on-pr:
+    description: >-
+      Post the result as a pull-request comment. Needs `pull-requests: write`
+      in the job's permissions. The comment is edited in place on later pushes
+      rather than added to.
+    default: 'true'
+  github-token:
+    description: Token used to read and write the pull-request comment.
+    default: ${{ github.token }}
+
+outputs:
+  exit-code:
+    description: '0 clean, 1 new findings above the threshold, 2 cradle could not run.'
+    value: ${{ steps.check.outputs.exit-code }}
+  report-path:
+    description: Path of the generated HTML report.
+    value: ${{ steps.scan.outputs.report-path }}
+
+runs:
+  using: composite
+  steps:
+    - id: scan
+      name: Scan dependencies
+      shell: bash
+      env:
+        CRADLE_VERSION: ${{ inputs.version }}
+        CRADLE_PATH: ${{ inputs.path }}
+        CRADLE_INCLUDE_DEV: ${{ inputs.include-dev }}
+        CRADLE_OFFLINE: ${{ inputs.offline }}
+        CRADLE_SPEC_VERSION: ${{ inputs.spec-version }}
+      run: |
+        set -euo pipefail
+        args=("scan" "$CRADLE_PATH" "--spec-version" "$CRADLE_SPEC_VERSION")
+        # Written as if-blocks rather than `[ ... ] && args+=(...)`: that form is
+        # safe here but becomes a silent early exit under `set -e` the moment it
+        # ends up as the last line of the script.
+        if [ "$CRADLE_INCLUDE_DEV" = "true" ]; then args+=("--include-dev"); fi
+        if [ "$CRADLE_OFFLINE" = "true" ]; then args+=("--offline"); fi
+        npx --yes "cradle-cli@${CRADLE_VERSION}" "${args[@]}"
+        echo "report-path=${CRADLE_PATH%/}/.cradle/report.html" >> "$GITHUB_OUTPUT"
+
+    - id: check
+      name: Check against the baseline
+      shell: bash
+      env:
+        CRADLE_VERSION: ${{ inputs.version }}
+        CRADLE_PATH: ${{ inputs.path }}
+        CRADLE_FAIL_ON: ${{ inputs.fail-on }}
+        CRADLE_INCLUDE_DEV: ${{ inputs.include-dev }}
+        CRADLE_OFFLINE: ${{ inputs.offline }}
+        CRADLE_NO_BASELINE: ${{ inputs.no-baseline }}
+        CRADLE_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        CRADLE_UPLOAD: ${{ inputs.upload-artifact }}
+      run: |
+        # No `set -e` here: a non-zero exit is the result, not a failure. The
+        # scan step ran the same package under `set -e` first, so an install or
+        # download problem has already failed the job by now and cannot be
+        # mistaken for exit code 1.
+        set -uo pipefail
+        args=("$CRADLE_PATH" "--fail-on" "$CRADLE_FAIL_ON")
+        if [ "$CRADLE_INCLUDE_DEV" = "true" ]; then args+=("--include-dev"); fi
+        if [ "$CRADLE_OFFLINE" = "true" ]; then args+=("--offline"); fi
+        if [ "$CRADLE_NO_BASELINE" = "true" ]; then args+=("--no-baseline"); fi
+
+        # Annotations first, so they appear in the log next to the failure.
+        npx --yes "cradle-cli@${CRADLE_VERSION}" check "${args[@]}" --format github
+        code=$?
+        echo "exit-code=${code}" >> "$GITHUB_OUTPUT"
+
+        # The same run again as markdown, for the comment. The advisory cache is
+        # warm by now, so this costs one request rather than a second scan.
+        markdown_args=("${args[@]}")
+        if [ "$CRADLE_UPLOAD" = "true" ]; then
+          markdown_args+=("--artifact-name" "$CRADLE_ARTIFACT_NAME")
+        fi
+        npx --yes "cradle-cli@${CRADLE_VERSION}" check "${markdown_args[@]}" \
+          --format markdown > "${RUNNER_TEMP}/cradle-comment.md" || true
+
+        # Exit 2 means cradle could not run at all. That is a broken build, not a
+        # security result, and it must not be mistaken for one.
+        if [ "$code" -ge 2 ]; then
+          echo "::error::cradle could not complete the check. See the log above."
+          exit 1
+        fi
+
+    - name: Upload the report
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.path }}/.cradle/
+        if-no-files-found: warn
+
+    - name: Comment on the pull request
+      if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        body="${RUNNER_TEMP}/cradle-comment.md"
+        [ -s "$body" ] || { echo "No comment to post."; exit 0; }
+
+        # Idempotent by marker: a pull request that collects one comment per push
+        # is a pull request where nobody reads the comments.
+        marker='<!-- cradle-cli:report -->'
+        existing=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+          --jq "[.[] | select(.body | contains(\"${marker}\"))] | .[0].id // empty" || echo "")
+
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/${REPO}/issues/comments/${existing}" -F "body=@${body}" >/dev/null
+          echo "Updated comment ${existing}."
+        else
+          gh api -X POST "repos/${REPO}/issues/${PR_NUMBER}/comments" -F "body=@${body}" >/dev/null
+          echo "Posted a new comment."
+        fi
+
+    - name: Fail on new findings
+      if: ${{ steps.check.outputs.exit-code == '1' }}
+      shell: bash
+      run: |
+        echo "::error::New findings at or above the configured threshold. See the annotations above."
+        exit 1

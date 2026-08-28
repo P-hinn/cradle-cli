@@ -10,6 +10,7 @@ import {
 } from '../core/baseline/diff.js'
 import { CradleError } from '../core/errors.js'
 import { atOrAbove, severityRank } from '../core/vulns/severity.js'
+import { buildPullRequestComment } from '../report/markdown.js'
 import {
   type BaselineDiff,
   type BaselineDocument,
@@ -32,8 +33,10 @@ Options:
   --baseline            Accept the current findings and write them as the new
                         baseline. Exits 0.
   --no-baseline         Ignore the baseline and judge every finding as new
-  --format <text|github>  Output style (default: text). "github" emits
-                        workflow-command annotations.
+  --format <style>      text (default), github for workflow-command
+                        annotations, or markdown for a pull-request comment
+  --artifact-name <n>   Named in the markdown output as where the full report
+                        was uploaded
   --include-dev         Include development dependencies
   --no-cache            Do not read or write the local advisory cache
   --output-dir <dir>    Where .cradle files live (default: .cradle)
@@ -72,6 +75,7 @@ export async function runCheck(
       format: { type: 'string', default: 'text' },
       'include-dev': { type: 'boolean', default: false },
       'no-cache': { type: 'boolean', default: false },
+      'artifact-name': { type: 'string' },
       offline: { type: 'boolean', default: false },
       'output-dir': { type: 'string', default: '.cradle' },
       help: { type: 'boolean', short: 'h', default: false },
@@ -85,10 +89,11 @@ export async function runCheck(
 
   const threshold = parseThreshold(values['fail-on'])
   const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'github') {
+  if (format !== 'text' && format !== 'github' && format !== 'markdown') {
     throw new CradleError(
       `Unknown --format '${format}'`,
-      'Use --format text (the default) or --format github.',
+      'Use --format text (the default), github for workflow annotations, or markdown for a ' +
+        'pull-request comment.',
     )
   }
 
@@ -146,6 +151,28 @@ export async function runCheck(
     })) {
       stdout.write(`${annotation}\n`)
     }
+  }
+
+  // Markdown is the whole output, not an addition to it: the action pipes this
+  // straight into a pull-request comment.
+  if (format === 'markdown') {
+    stdout.write(
+      `${buildPullRequestComment({
+        project: { name: result.graph.root.name, version: result.graph.root.version },
+        packageManager: result.graph.packageManager,
+        scope: result.graph.includeDev ? 'all' : 'production',
+        componentCount: result.graph.components.length,
+        diff,
+        suppressed: result.suppressed.length,
+        failing,
+        threshold,
+        hasBaseline: baseline !== undefined,
+        toolName: TOOL_NAME,
+        toolVersion: TOOL_VERSION,
+        ...(values['artifact-name'] === undefined ? {} : { artifactName: values['artifact-name'] }),
+      })}\n`,
+    )
+    return failing.length > 0 ? 1 : 0
   }
 
   stdout.write(

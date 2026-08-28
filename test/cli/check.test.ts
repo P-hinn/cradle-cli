@@ -227,6 +227,31 @@ describe('cradle check — github format', () => {
     expect(out.split('\n').filter((line) => line.startsWith('::error'))).toHaveLength(1)
   })
 
+  it('emits a pull-request comment with --format markdown, and nothing else', async () => {
+    const dir = await project('npm-vulnerable')
+    const { code, out } = await run(['check', dir, '--format', 'markdown'])
+
+    expect(code).toBe(1)
+    expect(out.startsWith('<!-- cradle-cli:report -->')).toBe(true)
+    expect(out).toContain('4 new findings at or above high')
+    // The console summary would be noise inside a comment body.
+    expect(out).not.toContain('Baseline     none')
+    expect(out).not.toContain('::error')
+  })
+
+  it('names the artifact in the comment when the action uploaded one', async () => {
+    const dir = await project('npm-vulnerable')
+    const { out } = await run([
+      'check',
+      dir,
+      '--format',
+      'markdown',
+      '--artifact-name',
+      'cradle-report',
+    ])
+    expect(out).toContain('**cradle-report**')
+  })
+
   it('rejects an unknown format', async () => {
     const dir = await project('npm-vulnerable')
     const { code, err } = await run(['check', dir, '--format', 'junit'])

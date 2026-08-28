@@ -497,23 +497,57 @@ Umgesetzte Details:
 
 ### 6.6 GitHub Action
 
-Composite Action unter `action.yml` im selben Repo (`P-hinn/cradle-cli`), ruft `npx cradle-cli@<version>`
-auf:
+Composite Action unter `action.yml` im selben Repo (`P-hinn/cradle-cli`), ruft
+`npx cradle-cli@<version>` auf:
 
 ```yaml
-- uses: P-hinn/cradle-cli@v1
-  with:
-    fail-on: high
-    upload-artifact: true
-    comment-on-pr: true
+permissions:
+  contents: read
+  pull-requests: write   # nur für comment-on-pr
+
+steps:
+  - uses: actions/checkout@v5
+  - uses: actions/setup-node@v5
+    with: { node-version: '22' }
+  - uses: P-hinn/cradle-cli@v1
+    with:
+      fail-on: high
+      upload-artifact: true
+      comment-on-pr: true
 ```
 
-Lädt den Report als Artifact hoch und schreibt bei neuen Findings einen
-PR-Kommentar — idempotent über einen Marker im Kommentar-Body, also bestehenden
-aktualisieren statt neuen anlegen. Braucht `permissions: pull-requests: write`; das
-muss im README stehen, sonst scheitert jeder beim ersten Versuch.
+Ablauf: `scan` (schreibt SBOM, Findings, Report, Readiness) → `check`
+(Annotationen + Exit-Code) → Artifact-Upload → PR-Kommentar → Fehlschlag bei
+neuen Findings.
 
----
+Umgesetzte Details:
+
+* **Der PR-Kommentar wird vom Werkzeug erzeugt, nicht von der Action.**
+  `cradle check --format markdown` gibt den fertigen Body aus; die Action pipet
+  ihn nur weiter. Damit ist die Formatierung getestet, und das CLI braucht
+  **keinerlei Schreibzugriff auf GitHub** — das Posten macht `gh api` in der
+  Action.
+* **Idempotent über einen Marker** (`<!-- cradle-cli:report -->`): existiert ein
+  Kommentar mit diesem Marker, wird er per `PATCH` aktualisiert, sonst per `POST`
+  angelegt. Ein PR, der pro Push einen Kommentar sammelt, ist ein PR, in dem
+  niemand mehr Kommentare liest. Ein Test hält Marker im Werkzeug und Marker in
+  der Action aneinander gekoppelt.
+* **Exit-Code 2 wird als Build-Fehler behandelt, nicht als Sicherheitsergebnis.**
+  Der `check`-Schritt läuft bewusst ohne `set -e` — ein Exit ungleich null *ist*
+  das Ergebnis. Damit ein fehlgeschlagener Download nicht als „Exit 1 = neue
+  Findings" durchgeht, läuft dasselbe Paket vorher im `scan`-Schritt **mit**
+  `set -e`: ein Installationsproblem lässt den Job dort scheitern.
+* **Keine `${{ }}`-Interpolation in `run`-Blöcken.** Jeder Wert kommt über
+  `env:` — direkt eingesetzte Ausdrücke sind ein Script-Injection-Loch. Ein Test
+  prüft das.
+* **`--fail-on never`** meldet und lässt nichts scheitern, für die schrittweise
+  Einführung.
+
+Die Action lässt sich hier nicht ausführen, deshalb prüft `test/action.test.ts`
+die Fehler, die sonst erst in einer fremden Pipeline auffielen: Tippfehler in
+Input-Referenzen, `run`-Schritte ohne `shell`, ungepinnte `uses`-Versionen, ein
+abgedrifteter Marker. Die Shell-Schritte selbst wurden lokal gegen ein echtes
+Projekt ausgeführt.
 
 ## 7. Ausdrücklich nicht im MVP
 
