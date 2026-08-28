@@ -1,0 +1,11 @@
+{
+  "name": "acme-duplicates",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fixture: the same package present twice at different versions.",
+  "dependencies": {
+    "ms": "2.0.0",
+    "debug": "4.3.7"
+  }
+}

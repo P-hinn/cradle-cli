@@ -6,6 +6,7 @@ Designentscheidungen. Bei Widerspruch gilt dieses Dokument.
 
 - **npm-Paket:** `cradle-cli`
 - **Binary:** `cradle`
+- **Repo:** `github.com/P-hinn/cradle-cli`
 - **Lizenz:** Apache-2.0
 - **Stand:** 28.08.2026
 
@@ -335,11 +336,11 @@ Konfigurierbar über `.cradle/config.json`: `supportPeriodEnd`, `productName`,
 
 ### 6.6 GitHub Action
 
-Composite Action unter `action.yml` im selben Repo, ruft `npx cradle-cli@<version>`
+Composite Action unter `action.yml` im selben Repo (`P-hinn/cradle-cli`), ruft `npx cradle-cli@<version>`
 auf:
 
 ```yaml
-- uses: DEIN-USER/cradle@v1
+- uses: P-hinn/cradle-cli@v1
   with:
     fail-on: high
     upload-artifact: true
@@ -393,11 +394,22 @@ nichts direkt auf die Platte oder die Konsole. Dateizugriff und Ausgabe passiere
 
 - Jeder Lockfile-Parser bekommt mindestens ein echtes Fixture-Projekt als Test,
   inklusive Scoped Packages, Peer-Dependencies, Workspaces und einem Paket ohne
-  Lizenzangabe.
+  Lizenzangabe. Bestand unter `test/fixtures/`:
+
+  | Fixture | Deckt ab |
+  |---|---|
+  | `npm-basic` | Scoped Package, transitive Kette, prod/dev-Trennung |
+  | `npm-workspaces` | Workspace-Links, automatisch installierter Peer-Dep, Paket ohne Lizenzfeld, privates Root |
+  | `npm-duplicates` | Dasselbe Paket zweimal im Baum, verschachtelt unter einem Dependent |
+  | `detect/*` | Lockfile-Erkennung für npm, pnpm, Yarn Classic, Yarn Berry, Bun, sowie fehlende Lockfile und Nicht-Projekt |
+
 - Fixtures enthalten nur `package.json` und Lockfile, kein installiertes
   `node_modules`. Wo ein Parser Daten von der Platte braucht (pnpm, Yarn), wird
   ein minimaler `node_modules`-Baum aus reinen `package.json`-Dateien eingecheckt.
   Tests laufen damit offline und deterministisch, ohne `npm install`.
+- Jedes erzeugte SBOM wird im Test gegen die eingecheckten offiziellen
+  CycloneDX-Schemata validiert (1.6 und 1.7), nicht gegen handgeschriebene
+  Erwartungen.
 - Der OSV-Client wird in Tests gemockt, nie live abgefragt.
 - Fehlermeldungen sagen, was schiefging und was der Nutzer tun soll. „ENOENT" ist
   keine Fehlermeldung.

@@ -36,7 +36,9 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prebuild": "node scripts/gen-version.mjs",
+    "generate": "node scripts/gen-spdx-ids.mjs && node scripts/gen-version.mjs"
   },
   "dependencies": {
     "@npmcli/arborist": "^9.9.1",
@@ -47,6 +49,9 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.11",
     "@types/node": "^24.0.0",
+    "@types/spdx-expression-parse": "^4.0.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
