@@ -62,12 +62,11 @@ jobs:
           node dist/cli/index.js scan . || true
           node dist/cli/index.js scan . --include-dev --output-dir .cradle-dev || true
 
+      # No NODE_AUTH_TOKEN on purpose. Authentication is the OIDC exchange with
+      # npm's trusted publisher for this repository and this workflow filename;
+      # an empty token in the environment would only get in the way of it.
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
-        env:
-          # Unused when trusted publishing is configured for this package on
-          # npmjs.com; kept so the workflow still works with a token if it is not.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create the GitHub release
         env:
