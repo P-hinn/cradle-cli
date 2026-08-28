@@ -180,9 +180,16 @@ describe('release workflow', () => {
     expect(scripts).toContain('-sbom.cdx.json')
     expect(scripts).toContain('-sbom-with-dev.cdx.json')
 
-    const uploaded = [...scripts.matchAll(/\$\{assets\}\/([^"'\s]+)/g)].map((match) => match[1])
-    expect(uploaded.length).toBeGreaterThan(1)
-    expect(new Set(uploaded).size).toBe(uploaded.length)
+    // Each name appears twice: once copied into place, once uploaded. What has
+    // to be true is that the distinct names are as many as the files.
+    const referenced = [...scripts.matchAll(/\$\{assets\}\/([^"'\s]+)/g)].map(
+      (match) => match[1] ?? '',
+    )
+    const distinct = new Set(referenced)
+    expect(distinct.size).toBe(3)
+    for (const name of distinct) {
+      expect(referenced.filter((candidate) => candidate === name)).toHaveLength(2)
+    }
   })
 
   it('can be run again after a partial failure', () => {
