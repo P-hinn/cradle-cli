@@ -409,29 +409,55 @@ GitHub-Actions-Annotationen (`::error file=...`).
 ### 6.5 CRA-Readiness-Checkliste
 
 Der Grund, warum jemand uns statt eines generischen SBOM-Generators nimmt. Geprüft
-wird nicht nur der Paketbestand, sondern auch die Dokumentationspflichten drumherum:
+wird nicht nur der Paketbestand, sondern auch die Dokumentationspflichten drumherum.
+**Sechs** Punkte (die ursprünglich getrennten Punkte zu Art. 13 Abs. 8, 9 und 13
+sind zusammengefasst — die beiden Zehnjahresfristen lassen sich aus einem Repo
+nicht prüfen, gehören aber in die Handlungsanweisung):
 
-1. Existiert ein SBOM und ist es aktueller als die Lockfile?
-2. Existiert eine `SECURITY.md` mit Kontaktadresse für Schwachstellenmeldungen?
-   (Der CRA verlangt eine Coordinated-Vulnerability-Disclosure-Policy.)
-3. Ist ein Support-Zeitraum dokumentiert? (Art. 13 Abs. 8, siehe 3.4.)
-4. Sind Update-Verfügbarkeit und Doku-Aufbewahrung bedacht? (Art. 13 Abs. 9 und 13.)
-5. Sind alle Komponenten mit einer Lizenz versehen? Gibt es Pakete ohne oder mit
-   unklarer Lizenz?
-6. Gibt es Abhängigkeiten ohne Release seit über 24 Monaten oder als deprecated
-   markiert?
-7. Gibt es offene Findings ohne Fix und ohne VEX-Statement? (Die könnten im Ernstfall
-   meldepflichtig werden.)
+| ID | Prüfung | Bezug |
+|---|---|---|
+| `sbom` | Existiert ein SBOM und ist es aktueller als die Lockfile? | Anhang I Teil II Nr. 1 |
+| `disclosure` | Existiert eine `SECURITY.md` **mit erreichbarem Kontakt** (Adresse oder Meldelink)? | Anhang I Teil II Nr. 5 |
+| `support-period` | Ist der Support-Zeitraum dokumentiert und erreicht er die Fünfjahresgrenze? | Art. 13 Abs. 8, 9, 13 |
+| `licences` | Sind alle Komponenten mit einer Lizenz versehen? | Anhang I Teil II Nr. 1 |
+| `maintenance` | Deprecated oder seit über 24 Monaten ohne Release? | Anhang I Teil II Nr. 2 |
+| `unresolved` | Offene Findings ohne Fix und ohne VEX-Statement? | Art. 14 |
 
 Jeder Punkt bekommt einen Status — **erfüllt / teilweise / offen / nicht prüfbar** —
 und einen konkreten nächsten Schritt, formuliert als Handlungsanweisung, nicht als
-Vorwurf.
+Vorwurf. Wo cradle es nicht wissen kann, steht **nicht prüfbar**: eine Checkliste,
+die grün meldet, weil sie nicht hingesehen hat, ist schlechter als keine.
 
-Punkte, die Netzzugriff brauchen (6: Release-Alter, deprecated), melden unter
-`--offline` ehrlich **„nicht prüfbar"** statt „erfüllt".
+Konfigurierbar über `.cradle/config.json`: `productName`, `contactEmail`,
+`supportPeriodEnd`, `placedOnMarket`. Ein **unbekannter Schlüssel bricht ab** —
+ein vertipptes `supportPeriodEndd` würde sonst still „nicht dokumentiert" melden,
+während der Nutzer sicher ist, es dokumentiert zu haben.
 
-Konfigurierbar über `.cradle/config.json`: `supportPeriodEnd`, `productName`,
-`contactEmail`.
+Umgesetzte Details:
+
+* **Die Fünfjahresgrenze wird kalendergenau gerechnet.** Fünf Jahre sind je nach
+  Schaltjahr 1825 oder 1826 Tage; durch eine mittlere Jahreslänge geteilt ergeben
+  exakt fünf Kalenderjahre 4,999 — und das Werkzeug würde einem konformen Nutzer
+  sagen, er sei es nicht. Verglichen wird deshalb Datum gegen Datum. Fehlt
+  `placedOnMarket`, ist der Punkt „teilweise": die Grenze ist ohne Startdatum
+  nicht prüfbar.
+* **`maintenance` fragt die npm-Registry** und ist unter `--offline` „nicht
+  prüfbar". Zwei Signale mit sehr unterschiedlichen Kosten, deshalb zwei Umfänge:
+  *Deprecated* kommt aus dem Einzelversions-Manifest (wenige KB) und wird für
+  **alle** Komponenten geprüft; *letztes Release* steht nur im vollständigen
+  Packument (hunderte KB) und wird nur für **direkte** Abhängigkeiten geholt. Der
+  Report sagt beides ausdrücklich. Der `modified`-Zeitstempel der Registry sieht
+  wie eine billige Abkürzung aus und ist keine — er bewegt sich bei
+  Metadatenänderungen: `request` gilt dort als „diesen Monat geändert", das letzte
+  echte Release war 2020.
+* **Registry-Ausfälle brechen nichts ab.** Diese Information verbessert die
+  Checkliste, sie ist nicht der Zweck des Werkzeugs; ohne Antwort steht „nicht
+  prüfbar".
+* **`unresolved` zählt baselined-ohne-VEX als offen.** `cradle check` bleibt darauf
+  grün, weil ein Gate, das ab Tag eins rot ist, abgeschaltet wird — aber die
+  Baseline sagt „wissen wir", nicht „betrifft uns nicht", und nur VEX sagt
+  Letzteres. Würde die Checkliste die Baseline mitzählen, würde die Baseline
+  Findings still weißwaschen, und zwar genau dort, wo es am meisten zählt.
 
 ### 6.6 GitHub Action
 

@@ -15,12 +15,14 @@ import {
   type DependencyGraph,
   type Finding,
   type FindingsDocument,
+  type ReadinessReport,
   SEVERITY_ORDER,
   SUPPORTED_SPEC_VERSIONS,
   type VexDocument,
 } from '../types/index.js'
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { runPipeline } from './pipeline.js'
+import { gatherReadiness } from './readiness.js'
 
 export const SCAN_HELP = `cradle scan — resolve dependencies, write an SBOM and look up vulnerabilities
 
@@ -119,12 +121,27 @@ export async function runScan(
     `${JSON.stringify(findingsDocument, null, 2)}\n`,
     'utf8',
   )
+  // Evaluated after the SBOM is written, so the report describes the state it
+  // ships with rather than the one it replaced.
+  const readiness = await gatherReadiness({
+    projectDir,
+    outputDir,
+    graph,
+    findings,
+    suppressed,
+    now: now(),
+    offline,
+    ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+    ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
+  })
+
   await writeFile(
     join(outputDir, 'report.html'),
     buildReport({
       graph,
       findings,
       suppressed,
+      readiness,
       timestamp,
       offline,
       specVersion,
@@ -140,6 +157,7 @@ export async function runScan(
       graph,
       findings,
       suppressed,
+      readiness,
       unusedStatements: unmatchedStatements.length,
       expiringSoon: expiringSoon(vex, now()),
       specVersion,
@@ -160,6 +178,7 @@ interface SummaryInput {
   graph: DependencyGraph
   findings: Finding[]
   suppressed: Finding[]
+  readiness: ReadinessReport
   unusedStatements: number
   expiringSoon: { inDays: number }[]
   specVersion: CycloneDxSpecVersion
@@ -198,6 +217,14 @@ function summarize(input: SummaryInput): string {
     }
   }
 
+  const { counts } = input.readiness
+  const readinessParts = [
+    `${counts.met} met`,
+    counts.partial > 0 ? `${counts.partial} partial` : '',
+    counts.open > 0 ? `${counts.open} open` : '',
+    counts['not-assessable'] > 0 ? `${counts['not-assessable']} not assessable` : '',
+  ].filter((part) => part !== '')
+  lines.push(`  CRA checks   ${readinessParts.join(', ')}`)
   lines.push(`  Report       ${relative(join(input.outputDir, 'report.html'))}`)
   lines.push(`  Output       ${relative(input.outputDir)}/ · CycloneDX ${input.specVersion}`)
   if (graph.workspaces.length > 0) {
@@ -232,6 +259,18 @@ function summarize(input: SummaryInput): string {
       lines.push('  `cradle suppress` will record one with an auditable justification.')
       lines.push('')
     }
+  }
+
+  const openChecks = input.readiness.checks.filter((check) => check.status === 'open')
+  if (openChecks.length > 0) {
+    lines.push('  CRA readiness')
+    for (const check of openChecks.slice(0, 3)) {
+      lines.push(`    · ${check.title}`)
+    }
+    lines.push(
+      `    See the report for what to do about ${openChecks.length === 1 ? 'it' : 'them'}.`,
+    )
+    lines.push('')
   }
 
   const lapsing = input.expiringSoon

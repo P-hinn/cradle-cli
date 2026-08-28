@@ -104,10 +104,14 @@ describe('cradle scan', () => {
     expect(out).toContain('Next steps')
     expect(out).toContain('minimist 1.2.0 -> 1.2.6')
     expect(out).toContain('worst critical')
-    // At most three, so the summary stays a summary.
-    const bullets = out.split('\n').filter((line) => line.trimStart().startsWith('· '))
-    expect(bullets.length).toBeGreaterThan(0)
-    expect(bullets.length).toBeLessThanOrEqual(3)
+    // At most three upgrades, so the summary stays a summary. Readiness items
+    // are their own list further down.
+    const upgrades = out
+      .slice(out.indexOf('Next steps'), out.indexOf('CRA readiness'))
+      .split('\n')
+      .filter((line) => line.trimStart().startsWith('· '))
+    expect(upgrades.length).toBeGreaterThan(0)
+    expect(upgrades.length).toBeLessThanOrEqual(3)
   })
 
   it('says the lookup was skipped rather than implying a clean result', async () => {
@@ -145,8 +149,9 @@ describe('cradle scan', () => {
       cache,
     })
     // Only the batch request is repeated; advisory details come from the cache.
-    expect(cold.calls.length).toBeGreaterThan(1)
-    expect(warm.calls).toHaveLength(1)
+    // Registry traffic for the readiness checks is counted separately.
+    expect(cold.osvCalls.length).toBeGreaterThan(1)
+    expect(warm.osvCalls).toHaveLength(1)
   })
 
   it('emits 1.7 when asked', async () => {

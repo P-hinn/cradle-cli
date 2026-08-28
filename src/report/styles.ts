@@ -161,6 +161,29 @@ dl.facts dd { margin: 0; font-size: 0.9rem; word-break: break-word; }
 .sev-low { color: var(--low); }
 .sev-none, .sev-unknown { color: var(--none); }
 
+.status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Same rule as severity: the glyph repeats the meaning as a shape. */
+.status::before {
+  content: attr(data-glyph);
+  font-family: ui-monospace, monospace;
+}
+.status-met { color: var(--low); }
+.status-partial { color: var(--medium); }
+.status-open { color: var(--high); }
+.status-not-assessable { color: var(--ink-faint); }
+
+tr.ready-open > td:first-child { border-left: 3px solid var(--high); }
+tr.ready-partial > td:first-child { border-left: 3px solid var(--medium); }
+
 .tag {
   display: inline-block;
   border: 1px solid var(--rule-strong);

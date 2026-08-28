@@ -349,6 +349,50 @@ export interface BaselineDiff {
 }
 
 // ---------------------------------------------------------------------------
+// CRA readiness
+// ---------------------------------------------------------------------------
+
+/**
+ * Project facts cradle cannot work out from the code, read from
+ * `.cradle/config.json`.
+ */
+export interface CradleConfig {
+  /** The product as it is placed on the market, if that differs from the package name. */
+  productName?: string
+  /** Where vulnerability reports should be sent. */
+  contactEmail?: string
+  /** ISO date the support period ends (CRA Art. 13(8)). */
+  supportPeriodEnd?: string
+  /** ISO date the product was first placed on the market, for the five-year rule. */
+  placedOnMarket?: string
+}
+
+/**
+ * `met`            nothing further to do
+ * `partial`        in place but incomplete
+ * `open`           not done
+ * `not-assessable` cradle cannot tell, and says so rather than guessing
+ */
+export type ReadinessStatus = 'met' | 'partial' | 'open' | 'not-assessable'
+
+export interface ReadinessCheck {
+  id: string
+  title: string
+  status: ReadinessStatus
+  /** What cradle found. */
+  detail: string
+  /** What to do about it, phrased as an instruction rather than a reproach. */
+  nextStep: string
+  /** The article this relates to, for a reader holding the regulation. */
+  reference?: string
+}
+
+export interface ReadinessReport {
+  checks: ReadinessCheck[]
+  counts: Record<ReadinessStatus, number>
+}
+
+// ---------------------------------------------------------------------------
 // Scan options
 // ---------------------------------------------------------------------------
 

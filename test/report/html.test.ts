@@ -124,6 +124,80 @@ describe('buildReport — no findings', () => {
   })
 })
 
+describe('buildReport — readiness checklist', () => {
+  it('renders each check with what was found and what to do', async () => {
+    const { graph, findings } = await scanned('npm-vulnerable')
+    const html = buildReport({
+      ...BASE,
+      graph,
+      findings,
+      readiness: {
+        counts: { met: 1, partial: 0, open: 1, 'not-assessable': 1 },
+        checks: [
+          {
+            id: 'sbom',
+            title: 'A machine-readable SBOM exists and is current',
+            status: 'met',
+            detail: 'The SBOM is at least as recent as the lockfile.',
+            nextStep: 'Keep it that way by running cradle check in CI.',
+            reference: 'Annex I, Part II(1)',
+          },
+          {
+            id: 'disclosure',
+            title: 'A coordinated vulnerability disclosure policy is published',
+            status: 'open',
+            detail: 'The project has no SECURITY.md.',
+            nextStep: 'Add a SECURITY.md naming an address for vulnerability reports.',
+          },
+          {
+            id: 'maintenance',
+            title: 'Dependencies are still maintained',
+            status: 'not-assessable',
+            detail: 'The registry was not queried.',
+            nextStep: 'Re-run without --offline.',
+          },
+        ],
+      },
+    })
+
+    expect(html).toContain('CRA readiness')
+    expect(html).toContain('The project has no SECURITY.md.')
+    expect(html).toContain('Add a SECURITY.md naming an address')
+    expect(html).toContain('Annex I, Part II(1)')
+    // Not assessable is its own state: a checklist that reports green because it
+    // did not look is worse than no checklist.
+    expect(html).toContain('not assessable')
+  })
+
+  it('marks status with a glyph as well as a word, never colour alone', async () => {
+    const { graph } = await scanned('npm-basic')
+    const html = buildReport({
+      ...BASE,
+      graph,
+      findings: [],
+      readiness: {
+        counts: { met: 1, partial: 0, open: 0, 'not-assessable': 0 },
+        checks: [
+          {
+            id: 'sbom',
+            title: 'x',
+            status: 'met',
+            detail: 'y',
+            nextStep: 'z',
+          },
+        ],
+      },
+    })
+    expect(html).toContain('data-glyph="✓"')
+    expect(html).toContain('>met</span>')
+  })
+
+  it('leaves the section out when readiness was not evaluated', async () => {
+    const { graph, findings } = await scanned('npm-basic')
+    expect(buildReport({ ...BASE, graph, findings })).not.toContain('CRA readiness')
+  })
+})
+
 describe('buildReport — suppressed findings', () => {
   it('shows them rather than hiding them', async () => {
     // A suppression is a decision someone signed their name to; the report has

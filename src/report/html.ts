@@ -5,6 +5,9 @@ import type {
   CycloneDxSpecVersion,
   DependencyGraph,
   Finding,
+  ReadinessCheck,
+  ReadinessReport,
+  ReadinessStatus,
   ResolvedComponent,
   ResolvedLicense,
   Severity,
@@ -19,6 +22,7 @@ export interface ReportInput {
   findings: readonly Finding[]
   /** Findings a live VEX statement has ruled out. Shown, never hidden. */
   suppressed?: readonly Finding[]
+  readiness?: ReadinessReport
   /** ISO 8601 timestamp of the scan. */
   timestamp: string
   offline: boolean
@@ -66,6 +70,7 @@ export function buildReport(input: ReportInput): string {
 <div class="wrap">
 ${masthead(input)}
 ${summarySection(input)}
+${readinessSection(input)}
 ${findingsSection(input)}
 ${suppressedSection(input)}
 ${componentsSection(graph)}
@@ -341,6 +346,61 @@ function severityProvenance(finding: Finding): string {
 }
 
 // ---------------------------------------------------------------------------
+// CRA readiness
+// ---------------------------------------------------------------------------
+
+const STATUS_LABEL: Record<ReadinessStatus, string> = {
+  met: 'met',
+  partial: 'partial',
+  open: 'open',
+  'not-assessable': 'not assessable',
+}
+
+/** Ordinal marks again, so status never depends on colour. */
+const STATUS_GLYPH: Record<ReadinessStatus, string> = {
+  met: '✓',
+  partial: '~',
+  open: '!',
+  'not-assessable': '?',
+}
+
+/**
+ * The readiness checklist.
+ *
+ * This is the part of the report that is about the regulation rather than the
+ * dependency tree, and it is where the wording matters most: every item says
+ * what was found and what to do next, and none of them claims that doing so
+ * makes anyone compliant.
+ */
+function readinessSection(input: ReportInput): string {
+  const readiness = input.readiness
+  if (readiness === undefined || readiness.checks.length === 0) return ''
+
+  const open = readiness.counts.open + readiness.counts.partial
+  const summary =
+    open === 0
+      ? 'Nothing outstanding that cradle can see.'
+      : `${open} of ${readiness.checks.length} need attention.`
+
+  return `<h2>CRA readiness <span class="count">${escapeHtml(summary)}</span></h2>
+<p class="section-note">The Cyber Resilience Act asks for documentation and process, not only for a clean dependency tree, and that is the part that gets forgotten. Where cradle cannot tell, it says so rather than guessing. None of this is a compliance assessment.</p>
+<div class="scroll"><table>
+<thead><tr><th>Status</th><th>Check</th><th>Finding and next step</th></tr></thead>
+<tbody>
+${readiness.checks.map(readinessRow).join('\n')}
+</tbody>
+</table></div>`
+}
+
+function readinessRow(check: ReadinessCheck): string {
+  return `  <tr class="ready-${check.status}">
+    <td><span class="status status-${check.status}" data-glyph="${escapeHtml(STATUS_GLYPH[check.status])}">${escapeHtml(STATUS_LABEL[check.status])}</span></td>
+    <td>${escapeHtml(check.title)}${check.reference === undefined ? '' : `<div class="pathline">${escapeHtml(check.reference)}</div>`}</td>
+    <td>${escapeHtml(check.detail)}<div class="pathline"><strong>Next:</strong> ${escapeHtml(check.nextStep)}</div></td>
+  </tr>`
+}
+
+// ---------------------------------------------------------------------------
 // Suppressed findings
 // ---------------------------------------------------------------------------
 
@@ -480,6 +540,7 @@ ${embedJson({
   components: input.graph.components,
   findings: input.findings,
   suppressed: input.suppressed ?? [],
+  readiness: input.readiness ?? null,
 })}
 </script>`
 }

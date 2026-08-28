@@ -11,6 +11,8 @@ export interface FakeOsv {
   fetch: typeof globalThis.fetch
   /** Every URL requested, in order. */
   calls: string[]
+  /** Only the OSV ones, for tests that care about advisory traffic. */
+  osvCalls: string[]
   batchBodies: unknown[]
 }
 
@@ -41,6 +43,7 @@ export interface FakeOsvOptions {
  */
 export function fakeOsv(options: FakeOsvOptions = {}): FakeOsv {
   const calls: string[] = []
+  const osvCalls: string[] = []
   const batchBodies: unknown[] = []
   const failures = [...(options.failWith ?? [])]
   let networkErrors = options.networkErrors ?? 0
@@ -48,6 +51,14 @@ export function fakeOsv(options: FakeOsvOptions = {}): FakeOsv {
   const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     calls.push(url)
+
+    // The readiness checks also talk to the npm registry. Answering with "no
+    // such package" keeps those checks honest (they report not-assessable)
+    // without any test needing to know they exist.
+    if (url.startsWith('https://registry.npmjs.org/')) {
+      return new Response('not found', { status: 404 })
+    }
+    osvCalls.push(url)
 
     if (networkErrors > 0) {
       networkErrors -= 1
@@ -84,5 +95,5 @@ export function fakeOsv(options: FakeOsvOptions = {}): FakeOsv {
     return Response.json(read(`${id}.json`))
   }) as typeof globalThis.fetch
 
-  return { fetch, calls, batchBodies }
+  return { fetch, calls, osvCalls, batchBodies }
 }
