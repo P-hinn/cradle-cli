@@ -116,12 +116,16 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - uses: P-hinn/cradle-cli@v1
+      - uses: P-hinn/cradle-cli@v0.1.0
         with:
           fail-on: high
           upload-artifact: true
           comment-on-pr: true
 ```
+
+Pin the exact tag while the project is pre-1.0. The action's default
+`cradle-cli` version is the release it was cut from, so a pinned tag means a
+pinned tool. A moving `v1` will exist once there is a 1.0 worth moving.
 
 The action scans, checks against the baseline, uploads the report as a build
 artifact and edits one pull-request comment in place rather than adding a new one
@@ -199,15 +203,21 @@ dependency should have to be renewed, not quietly outlive its reasoning.
 ## What belongs in git
 
 ```gitignore
-.cradle/*
-!.cradle/config.json
-!.cradle/vex.json
-!.cradle/baseline.json
+**/.cradle/*
+!**/.cradle/config.json
+!**/.cradle/vex.json
+!**/.cradle/baseline.json
 ```
 
 The three exceptions record decisions. The rest is output, regenerated on every
-run. (The negations need `.cradle/*` rather than `.cradle/`: git cannot
-re-include a file whose parent directory is excluded.)
+run.
+
+Two details that cost us an afternoon, so they may as well cost you nothing: the
+negations need `.cradle/*` rather than `.cradle/`, because git cannot re-include
+a file whose parent directory is excluded — and the `**/` matters in a monorepo,
+because a pattern containing a slash is anchored to the directory the
+`.gitignore` sits in. A blanket `.cradle/` silently drops the files holding your
+own rulings.
 
 ## Configuration
 

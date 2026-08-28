@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/main.js'
 import { MemoryCache } from '../../src/core/vulns/cache.js'
 import type { FindingsDocument, VexDocument } from '../../src/types/index.js'
+import { TOOL_NAME, TOOL_VERSION } from '../../src/version.generated.js'
 import { fixture } from '../support/fixtures.js'
 import { fakeOsv } from '../support/osv.js'
 
@@ -82,7 +83,8 @@ describe('cradle suppress', () => {
     const vex = await readVex(dir)
     expect(vex['@context']).toBe('https://openvex.dev/ns/v0.2.0')
     expect(vex.author).toBe(AUTHOR)
-    expect(vex.tooling).toBe('cradle-cli/0.0.0')
+    // Read rather than hard-coded, so a version bump is not a test change.
+    expect(vex.tooling).toBe(`${TOOL_NAME}/${TOOL_VERSION}`)
     expect(vex.version).toBe(1)
 
     const statement = vex.statements[0]

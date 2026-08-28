@@ -93,6 +93,15 @@ describe('action.yml', () => {
     }
   })
 
+  it('defaults to the cradle-cli version it ships with', () => {
+    // A pinned action tag has to mean a pinned tool, or `uses: ...@v0.1.0` would
+    // silently start running a different release.
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+    expect(ACTION.inputs.version?.default).toBe(pkg.version)
+  })
+
   it('pins the action versions it depends on', () => {
     for (const step of ACTION.runs.steps) {
       if (step.uses === undefined) continue
