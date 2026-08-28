@@ -1,6 +1,6 @@
 {
   "name": "cradle-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "SBOM, vulnerability findings and a CRA readiness report for npm projects — one command.",
   "keywords": [
     "sbom",
