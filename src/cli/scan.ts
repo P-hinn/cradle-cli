@@ -18,7 +18,6 @@ import {
   type ReadinessReport,
   SEVERITY_ORDER,
   SUPPORTED_SPEC_VERSIONS,
-  type VexDocument,
 } from '../types/index.js'
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { runPipeline } from './pipeline.js'

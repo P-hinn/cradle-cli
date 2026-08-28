@@ -33,7 +33,7 @@
     "node": ">=22.9.0"
   },
   "bin": {
-    "cradle": "./dist/cli/index.js"
+    "cradle": "dist/cli/index.js"
   },
   "exports": {
     ".": {
@@ -47,8 +47,8 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write --error-on-warnings .",
     "test": "vitest run",
     "test:watch": "vitest",
     "prebuild": "node scripts/gen-version.mjs",
