@@ -104,7 +104,13 @@ export async function queryOsv(
       }
     }
 
-    const vulnerability = await request<OsvVulnerability>(`${API}/vulns/${id}`, {}, options)
+    // The id comes from OSV's own response, but it still goes into a URL path;
+    // encoding it keeps a malformed one from reshaping the request.
+    const vulnerability = await request<OsvVulnerability>(
+      `${API}/vulns/${encodeURIComponent(id)}`,
+      {},
+      options,
+    )
     result.requests += 1
     details.set(id, vulnerability)
     await options.cache.set(cacheKey, JSON.stringify(vulnerability))

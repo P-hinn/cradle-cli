@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import type { ResolvedLicense } from '../../types/index.js'
 import { normalizeLicense } from '../sbom/license.js'
 import type { RawPackage } from './graph.js'
@@ -20,12 +20,17 @@ export async function readLicensesFromDisk(
 ): Promise<Map<string, ResolvedLicense[]>> {
   const licenses = new Map<string, ResolvedLicense[]>()
 
+  const root = resolve(projectDir)
+
   await Promise.all(
     [...packages].map(async (pkg) => {
       for (const candidate of candidatePaths(pkg)) {
+        const path = within(root, join(candidate, 'package.json'))
+        if (path === undefined) continue
+
         let raw: string
         try {
-          raw = await readFile(join(projectDir, candidate, 'package.json'), 'utf8')
+          raw = await readFile(path, 'utf8')
         } catch {
           continue
         }
@@ -50,6 +55,20 @@ export async function readLicensesFromDisk(
   )
 
   return licenses
+}
+
+/**
+ * Resolve a project-relative path, refusing anything that leaves the project.
+ *
+ * Package names and install locations come out of a lockfile, which is an input
+ * like any other. A package named `../../secret` would otherwise make cradle read
+ * a package.json outside the project and copy its licence into the SBOM.
+ */
+function within(root: string, candidate: string): string | undefined {
+  const path = resolve(root, candidate)
+  const rel = relative(root, path)
+  if (rel === '' || rel.startsWith('..') || rel.startsWith(`${sep}..`)) return undefined
+  return path
 }
 
 /** Where pnpm puts a package: `.pnpm/@scope+name@version/node_modules/@scope/name`. */
