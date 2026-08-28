@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.cradle/
+*.tsbuildinfo
+
+# Fixtures ship package.json + lockfile only. Anything a parser needs from
+# node_modules gets committed as a hand-built minimal tree, so tests stay
+# offline and deterministic.
+test/fixtures/**/node_modules/

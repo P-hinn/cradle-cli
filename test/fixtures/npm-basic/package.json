@@ -1,0 +1,14 @@
+{
+  "name": "acme-widget",
+  "version": "2.3.0",
+  "description": "Fixture: scoped package, transitive deps, prod/dev split.",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "@sindresorhus/is": "7.0.1",
+    "debug": "4.3.7"
+  },
+  "devDependencies": {
+    "chalk": "4.1.2"
+  }
+}
