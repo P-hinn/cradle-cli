@@ -1,6 +1,6 @@
 import { CradleError } from '../core/errors.js'
 import { TOOL_VERSION } from '../version.generated.js'
-import { runScan } from './scan.js'
+import { runScan, type ScanDependencies } from './scan.js'
 
 const HELP = `cradle — SBOM, findings and a CRA readiness report for npm projects
 
@@ -27,6 +27,8 @@ export async function main(
   argv: string[],
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
+  /** Injection point for tests; production passes nothing. */
+  dependencies: ScanDependencies = {},
 ): Promise<number> {
   const [command, ...rest] = argv
 
@@ -42,7 +44,7 @@ export async function main(
   try {
     switch (command) {
       case 'scan':
-        return await runScan(rest, stdout)
+        return await runScan(rest, stdout, dependencies)
       case 'check':
       case 'suppress':
         throw new CradleError(

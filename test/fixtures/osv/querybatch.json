@@ -1,0 +1,44 @@
+{
+  "results": [
+    {
+      "vulns": [
+        {
+          "id": "GHSA-29mw-wpgm-hmr9",
+          "modified": "2025-09-29T21:12:31.102523Z"
+        },
+        {
+          "id": "GHSA-35jh-r3h4-6jhm",
+          "modified": "2026-07-08T18:29:36.682352Z"
+        },
+        {
+          "id": "GHSA-f23m-r3pf-42rh",
+          "modified": "2026-07-08T07:10:26.957853Z"
+        },
+        {
+          "id": "GHSA-p6mc-m468-83gw",
+          "modified": "2025-08-12T21:56:17.174859Z"
+        },
+        {
+          "id": "GHSA-r5fr-rjxr-66jc",
+          "modified": "2026-07-08T08:11:11.759560Z"
+        },
+        {
+          "id": "GHSA-xxjr-mmjv-4gpg",
+          "modified": "2026-07-08T07:10:26.957853Z"
+        }
+      ]
+    },
+    {
+      "vulns": [
+        {
+          "id": "GHSA-vh95-rmgr-6w4m",
+          "modified": "2026-03-13T22:11:31.390433Z"
+        },
+        {
+          "id": "GHSA-xvch-5gv4-984h",
+          "modified": "2026-03-13T22:11:59.523514Z"
+        }
+      ]
+    }
+  ]
+}

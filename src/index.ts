@@ -15,5 +15,16 @@ export { type BuildBomOptions, buildBom } from './core/sbom/cyclonedx.js'
 export { parseIntegrity } from './core/sbom/hash.js'
 export { normalizeLicense, toCycloneDx } from './core/sbom/license.js'
 export { npmPurl } from './core/sbom/purl.js'
+export { MemoryCache, NULL_CACHE, type VulnCache } from './core/vulns/cache.js'
+export { type CvssScore, scoreCvssV3 } from './core/vulns/cvss.js'
+export { countBySeverity, resolveFindings } from './core/vulns/findings.js'
+export { type OsvClientOptions, type OsvQuery, packageKey, queryOsv } from './core/vulns/osv.js'
+export type * from './core/vulns/osv-types.js'
+export {
+  findingsWithoutFix,
+  type Recommendation,
+  recommendUpgrades,
+} from './core/vulns/recommend.js'
+export { atOrAbove, normalizeSeverity, severityRank } from './core/vulns/severity.js'
 export * from './types/index.js'
 export { TOOL_NAME, TOOL_VERSION } from './version.generated.js'

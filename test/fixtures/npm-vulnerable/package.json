@@ -1,0 +1,11 @@
+{
+  "name": "acme-vulnerable",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fixture: dependencies with real, published advisories.",
+  "dependencies": {
+    "lodash": "4.17.15",
+    "minimist": "1.2.0"
+  }
+}

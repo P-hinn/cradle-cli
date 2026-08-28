@@ -213,9 +213,22 @@ flache Liste. Metadaten: eigenes Projekt als `metadata.component`, Zeitstempel,
 Blöcke von maximal 1000 Paketen, Retry mit Backoff bei 429, lokaler Cache.
 `--offline` überspringt diesen Schritt und markiert den Report entsprechend.
 
-Severity-Normalisierung: CVSS-Vektor aus `severity[]` bevorzugt, GHSA-Einstufung aus
-`database_specific` als Fallback. Der Report weist darauf hin, dass ein
-CVSS-Basiswert keine Aussage über Ausnutzbarkeit im konkreten Kontext ist.
+Severity-Normalisierung: Der CVSS-v3-Basiswert wird aus dem Vektor **selbst
+berechnet** (die Formel ist von FIRST vollständig spezifiziert, also exakt statt
+geschätzt) und in die Stufen critical/high/medium/low überführt. Für CVSS v2 und
+v4 wird nicht gerechnet — v4 braucht eine große Nachschlagetabelle, und Raten wäre
+schlechter als das Label der Datenbank. Dann greift `database_specific.severity`
+(GitHub sagt `MODERATE`, wo CVSS `MEDIUM` sagt). Jedes Finding trägt in
+`severitySource`, welcher Weg es war. Der Report weist darauf hin, dass ein
+CVSS-Basiswert die Schwachstelle abstrakt beschreibt und nichts über
+Erreichbarkeit im konkreten Projekt aussagt.
+
+Zurückgezogene Advisories (`withdrawn`) werden verworfen.
+
+Der Cache liegt unter dem Schlüssel `osv/v1/<id>@<modified>`. Weil der
+`modified`-Zeitstempel des Advisories Teil des Schlüssels ist, invalidiert sich
+ein geändertes Advisory von selbst; ein Wiederholungslauf kostet genau eine
+Batch-Anfrage. `--no-cache` schaltet ihn ab.
 
 **Ergebnis** nach `.cradle/`:
 
@@ -410,7 +423,10 @@ nichts direkt auf die Platte oder die Konsole. Dateizugriff und Ausgabe passiere
 - Jedes erzeugte SBOM wird im Test gegen die eingecheckten offiziellen
   CycloneDX-Schemata validiert (1.6 und 1.7), nicht gegen handgeschriebene
   Erwartungen.
-- Der OSV-Client wird in Tests gemockt, nie live abgefragt.
+- Der OSV-Client wird in Tests gemockt, nie live abgefragt. Die Antworten unter
+  `test/fixtures/osv/` sind einmal echt aufgezeichnet und werden abgespielt; ein
+  Setup-File ersetzt `globalThis.fetch` durch einen Werfer, damit ein vergessener
+  Injektionspunkt laut scheitert statt still ins Netz zu gehen.
 - Fehlermeldungen sagen, was schiefging und was der Nutzer tun soll. „ENOENT" ist
   keine Fehlermeldung.
 - Keine `any`-Typen ohne Kommentar, der erklärt warum.

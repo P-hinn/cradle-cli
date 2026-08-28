@@ -150,6 +150,73 @@ export interface CdxBom {
 }
 
 // ---------------------------------------------------------------------------
+// Vulnerability findings
+// ---------------------------------------------------------------------------
+
+export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'none' | 'unknown'
+
+/** Ordered worst-first, so a table can sort on the index. */
+export const SEVERITY_ORDER: readonly Severity[] = [
+  'critical',
+  'high',
+  'medium',
+  'low',
+  'none',
+  'unknown',
+]
+
+/**
+ * How a severity was arrived at. The report states this, because a CVSS base
+ * score describes a vulnerability in the abstract and says nothing about
+ * whether it is reachable in a given project.
+ */
+export type SeveritySource = 'cvss' | 'database' | 'none'
+
+export interface Finding {
+  /** Primary OSV identifier, usually a GHSA. */
+  id: string
+  /** Other identifiers for the same issue, usually the CVE. */
+  aliases: string[]
+  summary: string
+  severity: Severity
+  severitySource: SeveritySource
+  cvss?: { vector: string; score: number; version: string }
+  component: {
+    bomRef: string
+    name: string
+    version: string
+    purl: string
+    direct: boolean
+  }
+  /** Lowest version that fixes it, when the advisory names one. */
+  fixedIn?: string
+  /**
+   * Shortest route from the product to the affected package, by name, e.g.
+   * `['acme-widget', 'express', 'body-parser']`.
+   */
+  path: string[]
+  /** Names of the packages that pull the affected one in directly. */
+  dependents: string[]
+  references: { type: string; url: string }[]
+  osvUrl: string
+  published?: string
+  modified?: string
+}
+
+export interface FindingsDocument {
+  schemaVersion: typeof ARTIFACT_SCHEMA_VERSION
+  timestamp: string
+  tool: { name: string; version: string }
+  project: { name: string; version: string }
+  scope: 'production' | 'all'
+  packageManager: PackageManager
+  /** True when the vulnerability lookup was skipped entirely. */
+  offline: boolean
+  componentCount: number
+  findings: Finding[]
+}
+
+// ---------------------------------------------------------------------------
 // Scan options
 // ---------------------------------------------------------------------------
 

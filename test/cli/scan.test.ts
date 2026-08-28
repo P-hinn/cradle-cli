@@ -4,8 +4,10 @@ import { join } from 'node:path'
 import { Writable } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { main } from '../../src/cli/main.js'
-import type { CdxBom } from '../../src/types/index.js'
+import { MemoryCache } from '../../src/core/vulns/cache.js'
+import type { CdxBom, FindingsDocument } from '../../src/types/index.js'
 import { fixture } from '../support/fixtures.js'
+import { fakeOsv } from '../support/osv.js'
 import { validateBom } from '../support/schema.js'
 
 /** Collects everything written to it, so nothing reaches the real console. */
@@ -31,10 +33,19 @@ afterEach(async () => {
   await Promise.all(temporaries.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
-async function run(args: string[]): Promise<{ code: number; out: string; err: string }> {
+async function run(
+  args: string[],
+  dependencies: Parameters<typeof main>[3] = {},
+): Promise<{ code: number; out: string; err: string }> {
   const out = capture()
   const err = capture()
-  const code = await main(args, out.stream, err.stream)
+  // The OSV client always gets a replay unless a test says otherwise; the setup
+  // file makes a real request throw, so a missing injection cannot slip past.
+  const code = await main(args, out.stream, err.stream, {
+    fetch: fakeOsv().fetch,
+    cache: new MemoryCache(),
+    ...dependencies,
+  })
   return { code, out: out.text(), err: err.text() }
 }
 
@@ -53,8 +64,74 @@ describe('cradle scan', () => {
     expect(out).toContain('acme-widget 2.3.0')
     expect(out).toContain('production only')
     expect(out).toContain('3 (2 direct, 1 transitive)')
-    // The summary must not imply a clean security result before we can give one.
-    expect(out).toContain('Vulnerability lookup is not implemented yet')
+    expect(out).toContain('Findings     0')
+  })
+
+  it('writes findings.json alongside the SBOM', async () => {
+    const dir = await outputDir()
+    await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir])
+
+    const doc = JSON.parse(await readFile(join(dir, 'findings.json'), 'utf8')) as FindingsDocument
+    expect(doc.project).toEqual({ name: 'acme-vulnerable', version: '1.0.0' })
+    expect(doc.scope).toBe('production')
+    expect(doc.offline).toBe(false)
+    expect(doc.findings).toHaveLength(8)
+    // Worst first, so the file is useful without re-sorting.
+    expect(doc.findings[0]?.severity).toBe('critical')
+    expect(doc.findings[0]?.path[0]).toBe('acme-vulnerable')
+  })
+
+  it('leads with the upgrades that clear the most, worst first', async () => {
+    const dir = await outputDir()
+    const { out } = await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir])
+
+    expect(out).toContain('Findings     8 (1 critical, 3 high, 4 medium)')
+    expect(out).toContain('Next steps')
+    expect(out).toContain('minimist 1.2.0 -> 1.2.6')
+    expect(out).toContain('worst critical')
+    // At most three, so the summary stays a summary.
+    const bullets = out.split('\n').filter((line) => line.trimStart().startsWith('· '))
+    expect(bullets.length).toBeGreaterThan(0)
+    expect(bullets.length).toBeLessThanOrEqual(3)
+  })
+
+  it('says the lookup was skipped rather than implying a clean result', async () => {
+    const dir = await outputDir()
+    const { out } = await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir, '--offline'])
+
+    expect(out).toContain('Findings     not checked (--offline)')
+    expect(out).toContain('the vulnerability lookup was skipped')
+
+    const doc = JSON.parse(await readFile(join(dir, 'findings.json'), 'utf8')) as FindingsDocument
+    expect(doc.offline).toBe(true)
+    expect(doc.findings).toEqual([])
+  })
+
+  it('makes no network request at all when offline', async () => {
+    const dir = await outputDir()
+    const osv = fakeOsv()
+    await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir, '--offline'], {
+      fetch: osv.fetch,
+    })
+    expect(osv.calls).toEqual([])
+  })
+
+  it('reuses the cache on a second run', async () => {
+    const dir = await outputDir()
+    const cache = new MemoryCache()
+    const cold = fakeOsv()
+    await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir], {
+      fetch: cold.fetch,
+      cache,
+    })
+    const warm = fakeOsv()
+    await run(['scan', fixture('npm-vulnerable'), '--output-dir', dir], {
+      fetch: warm.fetch,
+      cache,
+    })
+    // Only the batch request is repeated; advisory details come from the cache.
+    expect(cold.calls.length).toBeGreaterThan(1)
+    expect(warm.calls).toHaveLength(1)
   })
 
   it('emits 1.7 when asked', async () => {
