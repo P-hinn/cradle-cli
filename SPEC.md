@@ -1075,3 +1075,165 @@ reproduzierbaren Monorepo-Build läuft man ein Paket auf einmal:
 
 Der Zeitstempel wird dagegen bewusst **über alle Workspaces geteilt** — alle
 Reports stammen aus einem Scan zu einem Augenblick.
+
+## 18. DE/EU-Funktionen
+
+### 18.1 BSI TR-03183-2 — Profil, nicht Bewertung
+
+Geprüft gegen **Version 2.1.0 vom 20.08.2025** (`src/core/readiness/profiles/bsi-tr-03183.ts`).
+
+**Versionsermittlung, weil sie eine Falle enthält:** die BSI-Download-URLs tragen
+eine CMS-Asset-Version. Die Datei `BSI-TR-03183-2_v2_2_0.pdf` enthält
+*Dokumentversion 1.1*. Maßgeblich ist die Übersichtsseite, nicht der Dateiname.
+
+Achtzehn Datenfelder aus §4, §5.2.1–§5.2.4 und §6.1. Jedes Feld trägt den
+Abschnitt **und** die Stelle, an die die Zuordnungstabelle der Richtlinie es in
+CycloneDX 1.6 legt. Eine Checkliste, die sich nicht auf das Dokument
+zurückführen lässt, das sie umzusetzen behauptet, ist eine Meinung mit einer
+Tabelle drumherum.
+
+**Das Profil ändert den Exit-Code nie.** Mehrere Pflichtfelder sind Aussagen über
+die Auslieferung — ob das ausgelieferte Artefakt ausführbar, ein Archiv, eine
+strukturierte Datei ist. Ein npm-Paket wird als `.tgz` geholt und als Verzeichnis
+installiert; welches davon ausgeliefert wird, steht in keiner Lockfile. Diese
+Felder sind `not assessable` **mit Begründung**. Ein dauerhaft roter Build wird
+abgeschaltet.
+
+Das einzige Urteil, das das Profil fällt, lautet „kein Pflichtfeld ist offen".
+Ein Test greppt den Quelltext nach dem Wort *compliant* — das ist die Grenze,
+die dieses Werkzeug nicht überschreitet.
+
+Zwei Felder wurden von unerreichbar auf erreichbar gebracht, weil eine
+Checkliste, die niemand erfüllen kann, nutzlos ist: `metadata.manufacturer` aus
+`contactEmail` (§5.2.1) und `bsi:component:filename` aus der aufgelösten
+Tarball-URL (§5.2.2).
+
+**Offener Punkt:** §4 setzt den SPDX-Mindeststand auf **3.0.1**. cradles
+SPDX-Export ist 2.3 (§18.2). Die CycloneDX-1.6-Ausgabe erfüllt die
+Formatanforderung; der SPDX-Export tut es nicht, und das Profil prüft deshalb
+das CycloneDX-Dokument.
+
+### 18.2 SPDX 2.3 und CSAF 2.0 — zweite Darstellungen, keine zweiten Meinungen
+
+`--sbom-format cyclonedx|spdx|both`, `--vex-format openvex|csaf|both`.
+
+Keines der beiden Formate sagt etwas, was die bestehende Ausgabe nicht sagt. Sie
+existieren, weil jemand sie namentlich verlangt: SPDX im Einkauf, CSAF in der
+europäischen Schwachstellenbehandlung (TR-03183-3, ENISA-Meldeweg).
+
+Also sind es Darstellungen desselben aufgelösten Graphen, keine zweiten
+Auflösungen. Das SPDX-Dokument trägt denselben Zeitstempel wie das
+CycloneDX-Dokument und dessen Seriennummer im Namespace; ein Test zählt die
+Abhängigkeitskanten in beiden und verlangt Gleichheit. CSAF entsteht aus
+denselben Suppressions wie `vex.json`, und CSAFs `flags[].label` zählt exakt die
+fünf OpenVEX-Begründungen auf — die Abbildung ist verlustfrei.
+
+**Beide werden gegen die offiziellen Schemata validiert.** Eine Datei, die ein
+Format behauptet und es nicht erfüllt, ist schlechter als keine Datei: der
+Konsument merkt es, und alles andere in demselben Verzeichnis verliert damit an
+Glaubwürdigkeit. Für CSAF mussten FIRSTs drei CVSS-Schemata mitvendored werden,
+die CSAF per absoluter URL referenziert; zwei davon deklarieren draft-04 und
+werden **beim Laden im Test-Helper** umgedeutet. Die vendorten Dateien bleiben
+byteweise wie veröffentlicht — sie sind Beleg dafür, was das Schema sagte, und
+eine Bearbeitung an Ort und Stelle machte daraus einen Beleg dafür, was wir
+beschlossen haben, dass es sagen solle.
+
+**Leeres CSAF wird nicht geschrieben.** Das Schema setzt `minItems: 1` auf
+`vulnerabilities` und `full_product_names`; ohne Suppression gibt es kein
+gültiges CSAF-Dokument. Abwesend schlägt ungültig.
+
+### 18.3 `--lang en|de`
+
+Alle Strings des HTML-Reports **und** des Markdown-Kommentars liegen in
+`src/report/i18n/`. Das `lang`-Attribut wird mitgesetzt: eine übersetzte Seite,
+die weiter `lang="en"` sagt, wird vom Screenreader falsch ausgesprochen und vom
+Browser falsch getrennt.
+
+**Terminologie folgt dem deutschen Verordnungstext**, nicht einer wörtlichen
+Übersetzung des Englischen: *Schwachstelle* (nicht „Verwundbarkeit"),
+*Unterstützungszeitraum* (Art. 13 Abs. 8), *Komponente*, *Begründung*. Ein Leser
+mit der Verordnung in der Hand soll dieselben Wörter finden.
+
+**Die Disclaimer schwächen sich in der Übersetzung nicht ab.** Jeder einzelne hat
+einen Test. Eine abgemilderte Einschränkung würde den deutschen Report mehr
+behaupten lassen als den englischen — der einzige Fehler, den eine Übersetzung
+hier nicht machen darf.
+
+Interpolierte Strings sind **Funktionen**, keine Templates mit Platzhaltern:
+Deutsch stellt das Verb anders und bildet Plurale anders („in 1 Tag" / „in 5
+Tagen", „braucht" / „brauchen").
+
+**Englisch bleibt, was Maschinenvokabular ist:** die `data-*`-Attribute, auf die
+das Filterskript matcht, die CSS-Klassen und der Kommentar-Marker, über den die
+Action ihren eigenen Kommentar wiederfindet. Deren Übersetzung bräche das Filtern
+**nur auf Deutsch** — die Art Fehler, die ein Release übersteht. Der eingebettete
+JSON-Block ist in beiden Sprachen byte-identisch.
+
+### 18.4 `cradle notify` — Art.-14-Vorlagen
+
+Drei Stufen, drei Absätze: Frühwarnung (Art. 14 Abs. 2 Buchst. a, 24 h),
+Schwachstellenmeldung (Buchst. b, 72 h), Abschlussbericht (Buchst. c, 14 Tage
+**ab Verfügbarkeit einer Maßnahme**, siehe Korrektur in §3.2). Meldeweg: ENISA
+**und** koordinierendes CSIRT, gleichzeitig (Abs. 1).
+
+**Was der Befehl nicht tut, ist der wichtigere Teil.**
+
+* **Er entscheidet nicht, dass gemeldet werden muss.** Art. 14 betrifft *aktiv
+  ausgenutzte* Schwachstellen. cradle weiß, dass ein Advisory existiert und dass
+  die Lockfile die betroffene Version auflöst. Ob jemand sie ausnutzt, kann kein
+  Abhängigkeitsscanner wissen. Das steht **oben** in jedem Entwurf, nicht in einer
+  Fußnote.
+* **Er übermittelt nichts.** Er schreibt eine Datei. Ein Werkzeug, das auf einen
+  Timer hin an eine Behörde postet, wäre die schlechteste Funktion in diesem
+  Repository.
+
+Gelesen wird `findings.json`, nicht das Netz: unter einer 24-Stunden-Frist darf
+dieser Befehl nicht auf eine API warten, und so kann der Entwurf dem Report, den
+er begleitet, nicht widersprechen. Alles, was eine Lockfile nicht beantworten
+kann, ist ein sichtbarer `[TO BE COMPLETED]`-Platzhalter, und die Konsole zählt,
+wie viele offen sind.
+
+### 18.5 EPSS und CISA KEV — Reihenfolge, nicht Schwelle
+
+Ein CVSS-Basiswert beantwortet „wie schlimm wäre es". Triage unter einer Frist
+braucht „tut es jemand" — eine andere Frage, und bis hierher die einzige, die
+cradle nicht beantworten konnte.
+
+`check --sort exploit` sortiert: bekannt ausgenutzt zuerst, dann EPSS, dann
+Schwere. Ein Medium, über das CISA Belege hat, schlägt ein Critical, das niemand
+angefasst hat — genau das Gegenteil dessen, was Sortierung nach Schwere sagt.
+
+**`--fail-on` bleibt CVSS-basiert.** Ein Gate, dessen Schwelle sich täglich mit
+dem Modell eines Dritten bewegt, wird über Nacht rot, ohne dass jemand im Team
+etwas geändert hätte — und dann abgeschaltet.
+
+Beide Quellen sind über **CVE** geschlüsselt, cradle über GHSA. Ein Finding ohne
+CVE-Alias zeigt **„keine Daten"**, nicht Null: „keine Daten" und „kein Risiko"
+sind verschiedene Antworten. Ausfall einer Quelle wird benannt und der Scan läuft
+weiter. Cache tagesweise neu geschlüsselt, weil beide Quellen es sind. Es
+verlassen **nur CVE-Kennungen** die Maschine — kein Paketname, keine Version,
+nichts über das Projekt. `--no-priority` schaltet beides ab, ohne offline zu
+gehen.
+
+### 18.6 SARIF und GitLab
+
+`check --format sarif`: SARIF 2.1.0, das einzige Format, das GitHub Code
+Scanning **und** GitLab (seit 19.2) einlesen. Damit braucht keine der beiden
+Plattformen eine cradle-spezifische Integration.
+
+* **Direkte Abhängigkeit → Zeile in `package.json`.** Eine Annotation neben
+  etwas, das man ändern kann, wird gelesen; eine auf Zeile 1 nicht. Transitiv →
+  Lockfile, statt eine Zeile zu raten.
+* **Fingerprint = Advisory + Paketname, ohne Version** — dieselbe Identität wie
+  die Baseline (§6.4), damit ein Patch-Bump eines weiterhin verwundbaren Pakets
+  keine bereits abgetane Meldung wieder aufreißt.
+* **`security-severity`** trägt den berechneten CVSS-Basiswert, wo es einen gibt,
+  sonst die Bandmitte — und der Hilfetext sagt, welches von beidem. Eine Bandmitte
+  ist erkennbar ein Platzhalter; 7,4 sähe aus wie eine Messung.
+* **Offline ⇒ `executionSuccessful: false`.** Ein Dashboard muss „geprüft und
+  nichts gefunden" von „nicht geprüft" unterscheiden können.
+
+`examples/gitlab-ci.yml` trennt Evidenz-Job und Gate — nicht aus Stil: GitLab
+liest einen Security-Report **nur aus einem erfolgreichen Job**, der Scan muss
+also grün bleiben, auch an einem Tag, an dem das Gate rot ist. Das Gate liest den
+Exit-Code explizit, statt jedes Nicht-Null als „verwundbar" zu lesen.
