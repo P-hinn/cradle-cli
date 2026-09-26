@@ -239,6 +239,15 @@ that is absent for an ordinary project.
 
 ### Fixed
 
+- **A Windows checkout produced CRLF and failed the formatter** — 117 errors on a
+  repository clean on macOS and Linux. `.gitattributes` pins LF. This matters
+  beyond formatting: cradle reads lockfiles byte for byte, and a lockfile whose
+  line endings changed on checkout is not the one the package manager wrote. The
+  CI matrix found it on its first run.
+- **`ossf/scorecard-action@v2` does not resolve.** That action publishes no
+  floating major tag, and the repo-wide test requiring `@vN` had forced the
+  reference. The rule now accepts a major tag *or* a full version — both are
+  pins, and a full version is the stronger one.
 - **Yarn descriptors were split on the last `@` instead of the first.** A scope's
   `@` sits at position zero and everything after the separator is a range, free to
   contain more of them — so `typescript@patch:typescript@npm%3A5.9.3#…` parsed to a
