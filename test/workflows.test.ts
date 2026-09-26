@@ -321,7 +321,12 @@ describe('the GitLab CI example', () => {
     // dependencies without anyone deciding to.
     const variables = (parse(raw) as { variables: Record<string, string> }).variables
     expect(variables.CRADLE_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
-    expect(raw).toContain('cradle-cli@${CRADLE_VERSION}')
+    // The dollar and the brace are assembled rather than written together: a
+    // shell placeholder inside a TypeScript string is exactly what
+    // noTemplateCurlyInString exists to catch, and it is right to catch it
+    // everywhere that is not this assertion.
+    const placeholder = `${String.fromCharCode(36)}{CRADLE_VERSION}`
+    expect(raw).toContain(`cradle-cli@${placeholder}`)
   })
 
   it('uses the same comment marker the tool writes', () => {
@@ -330,6 +335,7 @@ describe('the GitLab CI example', () => {
   })
 
   it('skips the comment job rather than failing when no token is set', () => {
+    // A missing token is a setup choice, not an error.
     const rules = (config['cradle-comment'] as { rules?: { if?: string }[] } | undefined)?.rules
     expect(rules?.[0]?.if).toContain('CRADLE_MR_TOKEN')
   })
