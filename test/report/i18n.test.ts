@@ -231,7 +231,7 @@ describe('the pull-request comment in German', () => {
       packageManager: 'npm',
       scope: 'production',
       componentCount: 42,
-      diff: { added: [], known: [], resolved: [] },
+      diff: { added: [], known: [], resolved: [], worsened: [] },
       suppressed: 0,
       failing: [],
       threshold: 'high',
