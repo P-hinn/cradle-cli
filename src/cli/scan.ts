@@ -13,6 +13,7 @@ import type { VulnCache } from '../core/vulns/cache.js'
 import { countBySeverity } from '../core/vulns/findings.js'
 import { findingsWithoutFix, recommendUpgrades } from '../core/vulns/recommend.js'
 import { buildReport } from '../report/html.js'
+import { isLanguage, LANGUAGES } from '../report/i18n/index.js'
 import { renderProfileText } from '../report/profile.js'
 import {
   ARTIFACT_SCHEMA_VERSION,
@@ -44,6 +45,7 @@ Options:
   --vex-format <f>         openvex (default), csaf, or both. CSAF 2.0 VEX is
                            written as vex.csaf.json, from the same statements
   --workspace <name|all>   Report on one workspace package, or one report each
+  --lang <en|de>           Language of the report (default: en)
   --profile <name>         Add a profile section to the report. Currently:
                            bsi-tr-03183 (BSI TR-03183-2 v2.1.0)
   --timestamp <iso>        Use this timestamp instead of now
@@ -88,6 +90,7 @@ export async function runScan(
       'vex-format': { type: 'string', default: 'openvex' },
       workspace: { type: 'string' },
       profile: { type: 'string' },
+      lang: { type: 'string', default: 'en' },
       timestamp: { type: 'string' },
       'serial-number': { type: 'string' },
       'output-dir': { type: 'string' },
@@ -98,6 +101,14 @@ export async function runScan(
   if (values.help === true) {
     stdout.write(SCAN_HELP)
     return 0
+  }
+
+  const lang = values.lang
+  if (!isLanguage(lang)) {
+    throw new CradleError(
+      `Unknown --lang '${lang}'`,
+      `cradle writes its report in: ${LANGUAGES.join(', ')}.`,
+    )
   }
 
   const profileName = values.profile
@@ -307,6 +318,7 @@ export async function runScan(
         serialNumber,
         toolName: TOOL_NAME,
         toolVersion: TOOL_VERSION,
+        lang,
       }),
       'utf8',
     )

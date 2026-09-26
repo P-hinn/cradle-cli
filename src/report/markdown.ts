@@ -1,5 +1,6 @@
 import { severityRank } from '../core/vulns/severity.js'
 import type { BaselineDiff, Finding, Severity } from '../types/index.js'
+import { type Language, type Strings, strings } from './i18n/index.js'
 
 /**
  * The marker that makes the pull-request comment idempotent.
@@ -28,6 +29,8 @@ export interface PullRequestCommentInput {
   toolVersion: string
   /** Where the full report was uploaded, when the action uploaded one. */
   artifactName?: string
+  /** Defaults to English, like the report. */
+  lang?: Language
 }
 
 /**
@@ -39,40 +42,43 @@ export interface PullRequestCommentInput {
  */
 export function buildPullRequestComment(input: PullRequestCommentInput): string {
   const { diff } = input
+  const t = strings(input.lang)
   const total = diff.added.length + diff.known.length
 
   const lines: string[] = [
     COMMENT_MARKER,
-    `### ${verdict(input)}`,
+    `### ${verdict(input, t)}`,
     '',
-    `\`${input.project.name}@${input.project.version}\` · ${input.componentCount} components · ` +
-      `${input.packageManager} · ${input.scope === 'all' ? 'all dependencies' : 'production only'}`,
+    `\`${input.project.name}@${input.project.version}\` · ` +
+      t.markdown.subtitle(
+        input.componentCount,
+        input.packageManager,
+        input.scope === 'all' ? t.markdown.scopeAll : t.markdown.scopeProduction,
+      ),
     '',
   ]
 
-  const summary = [
-    `**${total}** known ${total === 1 ? 'finding' : 'findings'}`,
-    `**${diff.added.length}** new since the baseline`,
-  ]
-  if (input.suppressed > 0) summary.push(`**${input.suppressed}** ruled out by VEX`)
-  if (!input.hasBaseline) {
-    summary.push('_no baseline yet, so everything counts as new_')
-  }
+  const summary = [t.markdown.knownFindings(total), t.markdown.newSinceBaseline(diff.added.length)]
+  if (input.suppressed > 0) summary.push(t.markdown.ruledOutByVex(input.suppressed))
+  if (!input.hasBaseline) summary.push(t.markdown.noBaselineYet)
   lines.push(summary.join(' · '), '')
 
   if (diff.added.length > 0) {
-    lines.push('| Severity | Advisory | Package | Fixed in |', '| --- | --- | --- | --- |')
+    lines.push(
+      `| ${t.markdown.severity} | ${t.markdown.advisory} | ${t.markdown.package} | ${t.markdown.fixedIn} |`,
+      '| --- | --- | --- | --- |',
+    )
 
     const sorted = [...diff.added].sort(
       (a, b) => severityRank(a.severity) - severityRank(b.severity),
     )
     for (const finding of sorted.slice(0, MAX_ROWS)) {
-      const fix = finding.fixedIn === undefined ? '— _no fix yet_' : `\`${finding.fixedIn}\``
+      const fix = finding.fixedIn === undefined ? t.markdown.noFixYet : `\`${finding.fixedIn}\``
       const route = finding.component.direct
         ? ''
         : `<br><sub>${escapeCell(finding.path.join(' › '))}</sub>`
       lines.push(
-        `| ${finding.severity} | [${escapeCell(finding.id)}](${finding.osvUrl}) | ` +
+        `| ${t.severity[finding.severity]} | [${escapeCell(finding.id)}](${finding.osvUrl}) | ` +
           `\`${escapeCell(finding.component.name)}\` ${escapeCell(finding.component.version)}${route} | ${fix} |`,
       )
     }
@@ -80,29 +86,21 @@ export function buildPullRequestComment(input: PullRequestCommentInput): string 
       lines.push('')
       // Never truncate silently: a list that stops without saying so reads as
       // the complete picture.
-      lines.push(
-        `_${sorted.length - MAX_ROWS} further new ${sorted.length - MAX_ROWS === 1 ? 'finding is' : 'findings are'} listed in the report._`,
-      )
+      lines.push(t.markdown.truncated(sorted.length - MAX_ROWS))
     }
     lines.push('')
   }
 
   if (diff.resolved.length > 0) {
-    const label = diff.resolved.length === 1 ? 'finding is' : 'findings are'
-    lines.push(
-      `${diff.resolved.length} baselined ${label} gone. \`cradle check --baseline\` tidies the file up.`,
-      '',
-    )
+    lines.push(t.markdown.resolved(diff.resolved.length), '')
   }
 
   const unfixable = diff.added.filter((finding) => finding.fixedIn === undefined)
   if (unfixable.length > 0) {
     lines.push(
-      `<details><summary>${unfixable.length} of the new ${unfixable.length === 1 ? 'finding has' : 'findings have'} no fix available</summary>`,
+      `<details><summary>${t.markdown.unfixableSummary(unfixable.length)}</summary>`,
       '',
-      'Those need a decision rather than an upgrade. `cradle suppress <id> --justification ' +
-        '<category>` records one in `.cradle/vex.json`, where a reviewer can see and disagree ' +
-        'with it.',
+      t.markdown.unfixableBody,
       '',
       '</details>',
       '',
@@ -110,30 +108,23 @@ export function buildPullRequestComment(input: PullRequestCommentInput): string 
   }
 
   if (input.artifactName !== undefined) {
-    lines.push(
-      `The full report, the SBOM and \`findings.json\` are attached to this run as **${escapeCell(input.artifactName)}**.`,
-      '',
-    )
+    lines.push(t.markdown.artifact(escapeCell(input.artifactName)), '')
   }
 
-  lines.push(
-    '<sub>' +
-      `${input.toolName} ${input.toolVersion} — a technical snapshot, not legal advice and not a ` +
-      'conformity assessment.</sub>',
-  )
+  lines.push(`<sub>${t.markdown.footer(input.toolName, input.toolVersion)}</sub>`)
 
   return lines.join('\n')
 }
 
-function verdict(input: PullRequestCommentInput): string {
+function verdict(input: PullRequestCommentInput, t: Strings): string {
   if (input.failing.length > 0) {
-    const count = input.failing.length
-    return `❌ ${count} new ${count === 1 ? 'finding' : 'findings'} at or above ${input.threshold}`
+    const threshold = input.threshold === 'never' ? input.threshold : t.severity[input.threshold]
+    return t.markdown.verdictFailing(input.failing.length, threshold)
   }
   if (input.diff.added.length > 0) {
-    return `⚠️ ${input.diff.added.length} new ${input.diff.added.length === 1 ? 'finding' : 'findings'}, none above the threshold`
+    return t.markdown.verdictNewBelowThreshold(input.diff.added.length)
   }
-  return '✅ Nothing new since the baseline'
+  return t.markdown.verdictClean
 }
 
 /** Keep advisory text from breaking out of a markdown table cell. */

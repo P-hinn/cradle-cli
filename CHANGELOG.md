@@ -137,6 +137,25 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   least one vulnerability and one product, so an empty document is not a CSAF
   document — absent beats invalid, and the console says which.
 
+- **`--lang en|de`.** The HTML report and the pull-request comment in German,
+  with every string moved out to `src/report/i18n/` and the document's `lang`
+  attribute set to match — a translated page that still says `lang="en"` is
+  mispronounced by a screen reader and hyphenated wrongly by the browser.
+
+  The terminology follows the German text of Regulation (EU) 2024/2847 rather
+  than a literal translation, so a reader holding the regulation finds the same
+  words: **Schwachstelle**, **Komponente**, **Begründung**,
+  **Unterstützungszeitraum**. The disclaimers hedge exactly as hard in German as
+  in English, and a test checks each one — softening a caveat in translation would
+  make the German report claim more than the English one.
+
+  What stays English is deliberate: the `data-*` attributes the filter script
+  matches on, the CSS class names, and the comment marker the GitHub Action finds
+  its own comment by. Those are vocabulary for a machine, and translating them
+  would break filtering in German and nowhere else. The embedded JSON block is
+  byte-identical in both languages, because it is a record of the scan rather than
+  prose.
+
 ### Changed
 
 - **The documentation overstated OpenVEX conformance, and now says what is true.**

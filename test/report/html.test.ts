@@ -121,7 +121,11 @@ describe('buildReport — no findings', () => {
     const { graph } = await scanned('npm-basic')
     const html = buildReport({ ...BASE, graph, findings: [] })
     expect(html).toContain('No known vulnerabilities were reported')
-    expect(html).toContain('not "nothing exists"')
+    // The colophon now goes through the one escaper like everything else, and
+    // uses typographic quotes. The sentence is the same one, so the assertion is
+    // on the words rather than on the punctuation around them.
+    expect(html).toContain('nothing was known then')
+    expect(html).toContain('nothing exists')
   })
 })
 

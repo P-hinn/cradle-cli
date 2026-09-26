@@ -12,6 +12,7 @@ import { CradleError } from '../core/errors.js'
 import { BSI_TR_03183_2, checkBsiProfile } from '../core/readiness/profiles/bsi-tr-03183.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
 import { atOrAbove, severityRank } from '../core/vulns/severity.js'
+import { isLanguage, LANGUAGES } from '../report/i18n/index.js'
 import { buildPullRequestComment } from '../report/markdown.js'
 import {
   renderProfileAnnotations,
@@ -50,6 +51,7 @@ Options:
   --no-cache            Do not read or write the local advisory cache
   --workspace <name>    Gate one workspace package instead of the repository.
                         Its baseline lives in that package's own .cradle/
+  --lang <en|de>        Language of the markdown comment (default: en)
   --profile <name>      Also check the SBOM field by field against a published
                         profile. Currently: bsi-tr-03183 (BSI TR-03183-2 v2.1.0)
   --output-dir <dir>    Where .cradle files live (default: .cradle)
@@ -92,6 +94,7 @@ export async function runCheck(
       offline: { type: 'boolean', default: false },
       workspace: { type: 'string' },
       profile: { type: 'string' },
+      lang: { type: 'string', default: 'en' },
       'output-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -100,6 +103,14 @@ export async function runCheck(
   if (values.help === true) {
     stdout.write(CHECK_HELP)
     return 0
+  }
+
+  const lang = values.lang
+  if (!isLanguage(lang)) {
+    throw new CradleError(
+      `Unknown --lang '${lang}'`,
+      `cradle writes its output in: ${LANGUAGES.join(', ')}.`,
+    )
   }
 
   const profile = values.profile
@@ -254,6 +265,7 @@ export async function runCheck(
         hasBaseline: baseline !== undefined,
         toolName: TOOL_NAME,
         toolVersion: TOOL_VERSION,
+        lang,
         ...(values['artifact-name'] === undefined ? {} : { artifactName: values['artifact-name'] }),
       })}\n`,
     )
