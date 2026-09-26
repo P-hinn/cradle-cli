@@ -11,6 +11,7 @@ import { parseDocument } from '../core/vex/document.js'
 import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
 import { resolveFindings } from '../core/vulns/findings.js'
 import { queryOsv } from '../core/vulns/osv.js'
+import type { OsvVulnerability } from '../core/vulns/osv-types.js'
 import type {
   DependencyGraph,
   Finding,
@@ -40,6 +41,12 @@ export interface PipelineOptions {
 
 export interface PipelineResult {
   graph: DependencyGraph
+  /**
+   * The raw OSV answer, keyed by `name@version`. Exposed so that a per-workspace
+   * report can re-derive findings against a narrowed graph without asking the
+   * network a second time — the advisories are the same, only the routes differ.
+   */
+  osvByPackage: Map<string, OsvVulnerability[]>
   /** Findings that still count, after live VEX statements are applied. */
   findings: Finding[]
   /** Findings a live VEX statement rules out. Recorded, never discarded. */
@@ -56,6 +63,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   let findings: Finding[] = []
   let cacheHits = 0
+  let osvByPackage = new Map<string, OsvVulnerability[]>()
   if (!options.offline) {
     const cache =
       options.cache ??
@@ -72,6 +80,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
       },
     )
     cacheHits = result.cacheHits
+    osvByPackage = result.byPackage
     findings = resolveFindings(graph, result.byPackage)
   }
 
@@ -82,6 +91,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
 
   return {
     graph,
+    osvByPackage,
     findings: applied.active,
     suppressed: applied.suppressed,
     vex,

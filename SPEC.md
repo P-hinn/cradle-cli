@@ -126,7 +126,7 @@ niemand adressiert fühlt, der es nicht ist.
 | Thema | Entscheidung |
 |---|---|
 | npm-Paket / Binary | `cradle-cli` / `cradle` (`cradle` ist auf npm belegt) |
-| Monorepo | Root-`package.json` wird `metadata.component`; Workspaces erscheinen als direkte Komponenten. Ein Report pro Repo. `--workspace` später. |
+| Monorepo | Root-`package.json` wird `metadata.component`; Workspaces erscheinen als direkte Komponenten. Ein Report pro Repo als Default, `--workspace` für einen Report pro Paket — ausformuliert in §16. |
 | Lizenzquelle | `node_modules` von der Platte lesen; fehlt es, wird die Lizenz ehrlich als unbekannt gemeldet und im Readiness-Check als offener Punkt geführt. Kein automatischer Netzzugriff. |
 | CycloneDX-Version | **1.6** als Default (maximale Kompatibilität), `--spec-version 1.7` als Flag |
 | Serialisierung | Selbst gebaut. Das offizielle JSON-Schema liegt unter `schema/` und jeder SBOM-Test validiert dagegen. |
@@ -944,3 +944,91 @@ Die Tarball-URL landet in `externalReferences` und **nirgends sonst**. Nicht in
 der purl, nicht in einem Hash-Feld. Eine purl, die einen internen Host und ein
 Token einbettet, wäre keine gültige purl — und würde die Registry in jede SBOM
 tragen, die an einen Dritten geht. Ein Test hält das fest.
+
+## 16. Monorepo: `--workspace`
+
+§4 hatte „ein Report pro Repo, `--workspace` später" festgelegt. Hier ist das
+Später.
+
+### 16.1 Warum überhaupt
+
+Ein Monorepo hat **eine** Lockfile und **mehrere** Auslieferungsgegenstände. Der
+repo-weite Report antwortet auf „was steckt in diesem Repository". Ein
+Paket-Report antwortet auf „was steckt in dem Ding, das mein Team ausliefert" —
+eine andere Frage, und die, die entscheidet, wer ein Finding behebt.
+
+Der Unterschied steckt im Pfad. `@acme/api › fastify › find-my-way` ist die
+Antwort auf „kann mein Team das reparieren". Der repo-weite Report sagt
+`acme-monorepo › @acme/api › fastify › find-my-way` — dieselbe Tatsache mit einem
+Schritt davor, der niemandem gehört.
+
+### 16.2 Entscheidung: schneiden, nicht neu auflösen
+
+`--workspace` löst das Paket **nicht** eigenständig auf. Es schneidet einen
+Teilgraphen aus dem fertigen repo-weiten Graphen: das Paket wird die Wurzel, und
+nur was es tatsächlich erreicht bleibt übrig.
+
+Das ist der Kern. Ein Monorepo hat eine Lockfile, also **eine** Auflösung. Ein
+eigenständig aufgelöstes Paket würde andere Versionen bekommen als dasselbe Paket
+im Repo-Kontext — und dann würden zwei cradle-Reports über denselben Code
+einander widersprechen. Ein Test hält fest, dass jede Version im Paket-Report mit
+der im Repo-Report übereinstimmt.
+
+Aus derselben Entscheidung folgt: **eine** OSV-Abfrage für alle Pakete. Die
+Advisories sind dieselben, nur die Routen unterscheiden sich, also wird
+`resolveFindings` auf den geschnittenen Graphen erneut angewendet statt das Netz
+erneut zu fragen.
+
+### 16.3 Wohin die Ausgabe geht
+
+In das **Verzeichnis des Pakets** (`packages/api/.cradle/`), nicht unter den
+Repo-Root. Der Report soll bei dem Code liegen, den er beschreibt — das zählt,
+wenn ein Team ein Paket besitzt. Das `**/.cradle/*`-Muster im README ist genau
+deshalb so geschrieben, wie es geschrieben ist.
+
+`--workspace all` **verträgt sich nicht mit `--output-dir`** und bricht ab: jedes
+Paket würde in dasselbe Verzeichnis schreiben und nur das letzte überleben — ein
+Lauf, der erfolgreich aussieht und sechs Reports verschluckt hat.
+
+### 16.4 VEX: Root **und** Paket
+
+Statements werden aus `.cradle/vex.json` des Repo-Roots **und** aus dem des Pakets
+gelesen; bei Konflikt über dieselbe (Vulnerability × Produkt) gewinnt das Paket.
+
+Nur die Paket-Datei zu lesen hieße, Findings erneut zu melden, über die das Team
+auf Repo-Ebene längst entschieden hat — genau das Versagen, dessentwegen eine
+kaputte `vex.json` den Scan abbricht (§6.3). Das zusammengeführte Dokument wird
+**nie zurückgeschrieben**; es entscheidet nur, was dieser Report zählt, und
+niemand hat es verfasst.
+
+### 16.5 Geschwister bleiben Komponenten
+
+Hängt `@acme/api` von `@acme/shared` ab, erscheint `@acme/shared` im Report von
+`@acme/api` als gewöhnliche Komponente — mit `workspace: true`, aber als
+Abhängigkeit. Von hier aus *ist* es eine, nur eine, die man selbst reparieren
+kann.
+
+### 16.6 `check --workspace`: bewusst nur ein Paket
+
+`cradle check --workspace <name>` gibt es, `--workspace all` **nicht** und der
+Befehl bricht dafür ab.
+
+Begründung: ein Gate produziert **einen** Exit-Code und, im Markdown-Format,
+**einen** PR-Kommentar. Keines von beiden kann ehrlich für mehrere Pakete
+sprechen. Ein aggregierter Exit-Code würde „irgendwo ist etwas rot" melden, ohne
+zu sagen wo, und ein zusammengeworfener Kommentar wäre der Kommentar, den niemand
+mehr liest (§6.6). Ein Monorepo lässt stattdessen **einen check-Job pro Paket**
+laufen — was auch dafür sorgt, dass Annotationen und Baseline dort landen, wo sie
+hingehören.
+
+Die Baseline liegt entsprechend im Paketverzeichnis. Das ist der eigentliche
+Gewinn: der Altlast-Berg eines Geschwisterpakets färbt das eigene Gate nicht mehr
+rot. Ein Test hält genau das fest.
+
+### 16.7 Notes im Teilgraphen
+
+Eine Note (§15), die ein Paket außerhalb des Teilbaums nennt, ist hier Rauschen
+und wird weggelassen. Eine Note, die **gar keine** Komponente im Repository nennt
+— `unresolved-dependency` trägt nur einen Namen und hat per Definition keine —
+bleibt erhalten. Sie wegzulassen würde sie aus *jedem* Report entfernen statt sie
+in den richtigen zu verschieben.

@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { CradleError } from '../core/errors.js'
+import { workspaceNames } from '../core/resolve/workspace.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
 import { expiringSoon } from '../core/vex/apply.js'
 import type { VulnCache } from '../core/vulns/cache.js'
@@ -22,6 +23,7 @@ import {
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { runPipeline } from './pipeline.js'
 import { gatherReadiness } from './readiness.js'
+import { workspaceTarget } from './workspace-target.js'
 
 export const SCAN_HELP = `cradle scan — resolve dependencies, write an SBOM and look up vulnerabilities
 
@@ -33,8 +35,14 @@ Options:
   --offline                Skip the vulnerability lookup and mark the output offline
   --no-cache               Do not read or write the local advisory cache
   --spec-version <1.6|1.7> CycloneDX version to emit (default: 1.6)
+  --workspace <name|all>   Report on one workspace package, or one report each
   --output-dir <dir>       Where to write results (default: .cradle)
   -h, --help               Show this help
+
+With --workspace, that package becomes the product and only its own dependencies
+are reported. Results land in the package's own directory, next to the code they
+describe. --workspace all writes one report per package and cannot be combined
+with --output-dir, which would make every package overwrite the last.
 `
 
 export interface ScanDependencies {
@@ -59,7 +67,8 @@ export async function runScan(
       // prefix support, so `cache: {...}` alone would reject `--no-cache`.
       'no-cache': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
-      'output-dir': { type: 'string', default: '.cradle' },
+      workspace: { type: 'string' },
+      'output-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
@@ -78,96 +87,158 @@ export async function runScan(
   }
 
   const projectDir = resolve(positionals[0] ?? process.cwd())
-  const outputDir = resolve(projectDir, values['output-dir'] ?? '.cradle')
+  const outputOverride = values['output-dir']
+  const outputDir = resolve(projectDir, outputOverride ?? '.cradle')
+  const workspace = values.workspace
+  if (workspace === 'all' && outputOverride !== undefined) {
+    throw new CradleError(
+      '--workspace all cannot be combined with --output-dir',
+      'Every package would write to the same directory and only the last would survive. ' +
+        'Drop --output-dir, or name a single package with --workspace <name>.',
+    )
+  }
   const includeDev = values['include-dev'] === true
   const offline = values.offline === true
   const now = dependencies.now ?? (() => new Date())
 
   // Shared with `check`, so a green gate and a clean report can never disagree
   // about what a finding is.
-  const { graph, findings, suppressed, vex, unmatchedStatements, cacheHits } = await runPipeline({
-    projectDir,
-    outputDir,
-    includeDev,
-    offline,
-    useCache: values['no-cache'] !== true,
-    now: now(),
-    ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
-    ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
-  })
+  const { graph, findings, suppressed, vex, unmatchedStatements, cacheHits, osvByPackage } =
+    await runPipeline({
+      projectDir,
+      outputDir,
+      includeDev,
+      offline,
+      useCache: values['no-cache'] !== true,
+      now: now(),
+      ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+      ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
+    })
 
   const timestamp = now().toISOString()
-  const serialNumber = dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
-  const bom = buildBom(graph, { specVersion, timestamp, serialNumber })
 
-  const findingsDocument: FindingsDocument = {
-    schemaVersion: ARTIFACT_SCHEMA_VERSION,
-    timestamp,
-    tool: { name: TOOL_NAME, version: TOOL_VERSION },
-    project: { name: graph.root.name, version: graph.root.version },
-    scope: includeDev ? 'all' : 'production',
-    packageManager: graph.packageManager,
-    offline,
-    componentCount: graph.components.length,
-    findings,
-    suppressed,
-    notes: graph.notes,
-  }
+  // One pipeline run, however many reports come out of it. Slicing the finished
+  // graph rather than resolving each package on its own is what keeps a
+  // per-package report and the repository-wide one from disagreeing about
+  // versions — there is one lockfile, so there is one resolution.
+  const targets =
+    workspace === undefined
+      ? [
+          {
+            graph,
+            outputDir,
+            findings,
+            suppressed,
+            vex,
+            unmatchedStatements,
+          },
+        ]
+      : await Promise.all(
+          namesToScan(graph, workspace).map((name) =>
+            workspaceTarget({
+              repo: graph,
+              name,
+              projectDir,
+              rootOutputDir: outputDir,
+              outputOverride,
+              osvByPackage,
+              offline,
+              now: now(),
+            }),
+          ),
+        )
 
-  await mkdir(outputDir, { recursive: true })
-  await writeFile(join(outputDir, 'sbom.cdx.json'), `${JSON.stringify(bom, null, 2)}\n`, 'utf8')
-  await writeFile(
-    join(outputDir, 'findings.json'),
-    `${JSON.stringify(findingsDocument, null, 2)}\n`,
-    'utf8',
-  )
-  // Evaluated after the SBOM is written, so the report describes the state it
-  // ships with rather than the one it replaced.
-  const readiness = await gatherReadiness({
-    projectDir,
-    outputDir,
-    graph,
-    findings,
-    suppressed,
-    now: now(),
-    offline,
-    ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
-    ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
-  })
+  for (const target of targets) {
+    const serialNumber = dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
+    const bom = buildBom(target.graph, { specVersion, timestamp, serialNumber })
 
-  await writeFile(
-    join(outputDir, 'report.html'),
-    buildReport({
-      graph,
-      findings,
-      suppressed,
-      readiness,
+    const findingsDocument: FindingsDocument = {
+      schemaVersion: ARTIFACT_SCHEMA_VERSION,
       timestamp,
+      tool: { name: TOOL_NAME, version: TOOL_VERSION },
+      project: { name: target.graph.root.name, version: target.graph.root.version },
+      scope: includeDev ? 'all' : 'production',
+      packageManager: target.graph.packageManager,
       offline,
-      specVersion,
-      serialNumber,
-      toolName: TOOL_NAME,
-      toolVersion: TOOL_VERSION,
-    }),
-    'utf8',
-  )
+      componentCount: target.graph.components.length,
+      findings: target.findings,
+      suppressed: target.suppressed,
+      notes: target.graph.notes,
+    }
 
-  stdout.write(
-    summarize({
-      graph,
-      findings,
-      suppressed,
-      readiness,
-      unusedStatements: unmatchedStatements.length,
-      expiringSoon: expiringSoon(vex, now()),
-      specVersion,
-      offline,
-      cacheHits,
-      outputDir,
+    await mkdir(target.outputDir, { recursive: true })
+    await writeFile(
+      join(target.outputDir, 'sbom.cdx.json'),
+      `${JSON.stringify(bom, null, 2)}\n`,
+      'utf8',
+    )
+    await writeFile(
+      join(target.outputDir, 'findings.json'),
+      `${JSON.stringify(findingsDocument, null, 2)}\n`,
+      'utf8',
+    )
+    // Evaluated after the SBOM is written, so the report describes the state it
+    // ships with rather than the one it replaced.
+    const readiness = await gatherReadiness({
       projectDir,
-    }),
-  )
+      outputDir: target.outputDir,
+      graph: target.graph,
+      findings: target.findings,
+      suppressed: target.suppressed,
+      now: now(),
+      offline,
+      ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+      ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
+    })
+
+    await writeFile(
+      join(target.outputDir, 'report.html'),
+      buildReport({
+        graph: target.graph,
+        findings: target.findings,
+        suppressed: target.suppressed,
+        readiness,
+        timestamp,
+        offline,
+        specVersion,
+        serialNumber,
+        toolName: TOOL_NAME,
+        toolVersion: TOOL_VERSION,
+      }),
+      'utf8',
+    )
+
+    stdout.write(
+      summarize({
+        graph: target.graph,
+        findings: target.findings,
+        suppressed: target.suppressed,
+        readiness,
+        unusedStatements: target.unmatchedStatements.length,
+        expiringSoon: expiringSoon(target.vex, now()),
+        specVersion,
+        offline,
+        cacheHits,
+        outputDir: target.outputDir,
+        projectDir,
+      }),
+    )
+  }
   return 0
+}
+
+/** Which packages `--workspace` selected, with a usable error when it selected none. */
+function namesToScan(graph: DependencyGraph, workspace: string): string[] {
+  if (workspace !== 'all') return [workspace]
+
+  const names = workspaceNames(graph)
+  if (names.length === 0) {
+    throw new CradleError(
+      `${graph.root.name} has no workspace packages`,
+      'Run cradle without --workspace to scan the whole project.',
+    )
+  }
+  return names
 }
 
 function isSpecVersion(value: string | undefined): value is CycloneDxSpecVersion {

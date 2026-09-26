@@ -1,0 +1,9 @@
+{
+  "name": "@acme/api",
+  "version": "1.4.0",
+  "license": "MIT",
+  "dependencies": {
+    "lodash": "4.17.15",
+    "minimist": "1.2.0"
+  }
+}

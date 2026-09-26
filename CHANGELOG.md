@@ -60,6 +60,29 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   failure says which technique got through. Nothing executable survives, nothing
   is silently dropped, and the embedded JSON stays parseable.
 
+- **`--workspace <name|all>` for monorepos.** One report per deliverable, written
+  into that package's own directory so it sits with the code it describes. The
+  package becomes the product, only its own dependencies appear, and the route
+  starts where a team can act on it: `@acme/api › fastify › find-my-way` rather
+  than `acme-monorepo › @acme/api › fastify › find-my-way`.
+
+  The per-package graph is **sliced out of the repository-wide one**, never
+  resolved separately. A monorepo has one lockfile and therefore one resolution; a
+  package resolved on its own could pick different versions, and two cradle
+  reports about the same code that disagree are worse than one. That also means
+  one OSV query for the whole repository rather than one per package.
+
+  VEX statements are read from the repository root **and** the package, the package
+  winning a conflict — reading only the package's own file would re-report findings
+  the team had already ruled on. `--workspace all` refuses `--output-dir`, which
+  would quietly make every package overwrite the last.
+
+  `cradle check --workspace <name>` gates a single package, with its baseline in
+  that package's directory, so a sibling's backlog no longer reddens your gate.
+  `check --workspace all` is deliberately refused: a gate has one exit code and one
+  pull-request comment, and neither can honestly speak for several packages. Run
+  one check per package.
+
 ### Changed
 
 - **The documentation overstated OpenVEX conformance, and now says what is true.**

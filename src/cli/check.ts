@@ -21,6 +21,7 @@ import {
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { toAnnotations } from './github.js'
 import { type PipelineOptions, runPipeline } from './pipeline.js'
+import { workspaceTarget } from './workspace-target.js'
 
 export const CHECK_HELP = `cradle check — fail CI on findings that are new since the baseline
 
@@ -39,6 +40,8 @@ Options:
                         was uploaded
   --include-dev         Include development dependencies
   --no-cache            Do not read or write the local advisory cache
+  --workspace <name>    Gate one workspace package instead of the repository.
+                        Its baseline lives in that package's own .cradle/
   --output-dir <dir>    Where .cradle files live (default: .cradle)
   -h, --help            Show this help
 
@@ -77,7 +80,8 @@ export async function runCheck(
       'no-cache': { type: 'boolean', default: false },
       'artifact-name': { type: 'string' },
       offline: { type: 'boolean', default: false },
-      'output-dir': { type: 'string', default: '.cradle' },
+      workspace: { type: 'string' },
+      'output-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
@@ -98,12 +102,27 @@ export async function runCheck(
   }
 
   const projectDir = resolve(positionals[0] ?? process.cwd())
-  const outputDir = resolve(projectDir, values['output-dir'] ?? '.cradle')
+  const outputOverride = values['output-dir']
+  const rootOutputDir = resolve(projectDir, outputOverride ?? '.cradle')
   const now = (dependencies.now ?? (() => new Date()))()
 
-  const result = await runPipeline({
+  // Deliberately one package, never `all`. A gate produces one exit code and, in
+  // markdown, one pull-request comment; neither can honestly represent several
+  // packages at once. A monorepo runs one check job per package, which is also
+  // what makes the annotations and the baseline land in the right place.
+  const workspace = values.workspace
+  if (workspace === 'all') {
+    throw new CradleError(
+      '--workspace all is not available for `cradle check`',
+      'A gate has one exit code and one comment, and neither can speak for several ' +
+        'packages. Run one check per package: cradle check --workspace <name>. ' +
+        '`cradle scan --workspace all` does write a report for each.',
+    )
+  }
+
+  const repo = await runPipeline({
     projectDir,
-    outputDir,
+    outputDir: rootOutputDir,
     includeDev: values['include-dev'] === true,
     offline: values.offline === true,
     useCache: values['no-cache'] !== true,
@@ -112,6 +131,29 @@ export async function runCheck(
     ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
   })
 
+  // Sliced from the repository-wide run, never resolved separately: a gate and a
+  // report about the same package must not disagree about a version.
+  const target =
+    workspace === undefined
+      ? {
+          graph: repo.graph,
+          findings: repo.findings,
+          suppressed: repo.suppressed,
+          outputDir: rootOutputDir,
+        }
+      : await workspaceTarget({
+          repo: repo.graph,
+          name: workspace,
+          projectDir,
+          rootOutputDir,
+          outputOverride,
+          osvByPackage: repo.osvByPackage,
+          offline: values.offline === true,
+          now,
+        })
+
+  const result = { ...repo, ...target }
+  const outputDir = target.outputDir
   const baselinePath = join(outputDir, 'baseline.json')
 
   // `--baseline` accepts what is there today and says nothing about pass or

@@ -1,0 +1,11 @@
+{
+  "name": "acme-vulnerable-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fixture: a monorepo where one package carries the advisories.",
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "ms": "2.1.3"
+  }
+}
