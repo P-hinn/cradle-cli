@@ -1,0 +1,104 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A second push to a branch makes the first run's answer worthless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    # Node 22 is the floor the package declares, 24 is current. Three operating
+    # systems because the lockfile parsers join paths, and a separator that only
+    # breaks on Windows is exactly the bug that reaches a user before it reaches
+    # us.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22', '24']
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # The gate above proves the code works. This proves the built CLI works,
+      # on a real project, from a lockfile, with no node_modules and no network.
+      # --offline is not a convenience here: a CI job that reaches api.osv.dev
+      # turns someone else's outage into a red build on this repository.
+      - name: Scan the example project from its lockfile
+        shell: bash
+        working-directory: examples/express-service
+        run: |
+          set -euo pipefail
+          node ../../dist/cli/index.js scan --offline
+
+          for file in sbom.cdx.json findings.json report.html; do
+            if [ ! -s ".cradle/${file}" ]; then
+              echo "::error::scan --offline did not write a non-empty .cradle/${file}"
+              exit 1
+            fi
+          done
+
+          # An offline scan must say so in the findings file rather than leaving
+          # an empty list that reads like a clean result.
+          node -e '
+            const findings = require("./.cradle/findings.json")
+            if (findings.offline !== true) {
+              console.error("::error::findings.json does not record that the run was offline")
+              process.exit(1)
+            }
+          '
+
+      # Exit codes are part of the contract (SPEC.md §6.4), so they are asserted
+      # rather than assumed: 0 clean, 1 new findings over the threshold, 2 could
+      # not run. Offline there is nothing to find, so a clean 0 is the only
+      # correct answer - and `check` must not confuse "did not look" with "found
+      # something".
+      - name: Check the example project and assert the exit code
+        shell: bash
+        working-directory: examples/express-service
+        run: |
+          # set +e explicitly: GitHub invokes `shell: bash` with -e already on,
+          # and `set -uo pipefail` does not clear it. Under -e the first non-zero
+          # exit would end the step before the assertion could read it - which is
+          # to say, the test for exit code 2 would have passed by never running.
+          set +e
+          set -uo pipefail
+
+          node ../../dist/cli/index.js check --offline
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::error::check --offline exited ${status}, expected 0"
+            exit 1
+          fi
+
+          # The other side of the contract: an unusable path is a tool error,
+          # exit 2, and never a security result.
+          node ../../dist/cli/index.js check --offline ./does-not-exist
+          status=$?
+          if [ "$status" -ne 2 ]; then
+            echo "::error::check on a missing directory exited ${status}, expected 2"
+            exit 1
+          fi

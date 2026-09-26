@@ -1,0 +1,49 @@
+name: scorecard
+
+# OpenSSF Scorecard rates the repository's own supply-chain posture. For a tool
+# whose subject is supply-chain evidence, publishing that score is the least we
+# can do - it is the same question cradle asks of other people's dependencies.
+on:
+  branch_protection_rule:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Uploading the result to the code-scanning dashboard.
+      security-events: write
+      # Publishing to the public API that backs the README badge. This is what
+      # makes the score verifiable by someone who does not trust the badge.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      # Kept for 5 days so a score that drops can be compared against the run
+      # that caused it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif

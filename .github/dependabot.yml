@@ -1,0 +1,39 @@
+version: 2
+
+# Grouped on purpose. cradle has four runtime dependencies and a handful of dev
+# ones; one pull request a week that the CI matrix has already run is reviewable,
+# and eight separate ones are not.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    groups:
+      runtime:
+        dependency-type: production
+        patterns: ['*']
+      development:
+        dependency-type: development
+        patterns: ['*']
+
+  # The example project is pinned to deliberately dated dependencies so that it
+  # produces findings. Updating it would defeat its purpose, so it is not listed
+  # here - and that omission is the decision, not an oversight.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns: ['*']

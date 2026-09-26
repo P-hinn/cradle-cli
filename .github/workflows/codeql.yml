@@ -1,0 +1,47 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # A dependency-free repository still gets new query packs, so the analysis is
+  # re-run on a schedule rather than only when the code changes.
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          # security-extended adds the queries that matter for this codebase:
+          # path traversal out of the project directory, and unsafe HTML
+          # construction in the report generator.
+          queries: security-extended
+
+      # CodeQL can autobuild, but this repository builds in one command and the
+      # analysis should see the same output the release publishes.
+      - run: npm ci
+      - run: npm run build
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
