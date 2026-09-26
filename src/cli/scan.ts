@@ -36,8 +36,15 @@ Options:
   --no-cache               Do not read or write the local advisory cache
   --spec-version <1.6|1.7> CycloneDX version to emit (default: 1.6)
   --workspace <name|all>   Report on one workspace package, or one report each
+  --timestamp <iso>        Use this timestamp instead of now
+  --serial-number <urn>    Use this SBOM serial number instead of a fresh UUID
   --output-dir <dir>       Where to write results (default: .cradle)
   -h, --help               Show this help
+
+--timestamp and --serial-number exist for reproducible builds: two runs over the
+same lockfile with the same values produce byte-identical sbom.cdx.json. Without
+them each run stamps the current time and a fresh UUID, which is the right default
+for a report that says when it was made.
 
 With --workspace, that package becomes the product and only its own dependencies
 are reported. Results land in the package's own directory, next to the code they
@@ -68,6 +75,8 @@ export async function runScan(
       'no-cache': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
       workspace: { type: 'string' },
+      timestamp: { type: 'string' },
+      'serial-number': { type: 'string' },
       'output-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -97,6 +106,14 @@ export async function runScan(
         'Drop --output-dir, or name a single package with --workspace <name>.',
     )
   }
+  if (workspace === 'all' && values['serial-number'] !== undefined) {
+    throw new CradleError(
+      '--workspace all cannot be combined with --serial-number',
+      'A serial number identifies one BOM, and every package would be handed the same one. ' +
+        'For a reproducible monorepo build, run one package at a time: ' +
+        'cradle scan --workspace <name> --serial-number <urn>.',
+    )
+  }
   const includeDev = values['include-dev'] === true
   const offline = values.offline === true
   const now = dependencies.now ?? (() => new Date())
@@ -115,7 +132,11 @@ export async function runScan(
       ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
     })
 
-  const timestamp = now().toISOString()
+  // A run stamps the current time and a fresh UUID by default, because a report
+  // should say when it was made. Both are overridable so that a build can be
+  // reproducible: same lockfile and same values in, byte-identical SBOM out.
+  const timestamp = parseTimestamp(values.timestamp) ?? now().toISOString()
+  const fixedSerial = parseSerialNumber(values['serial-number'])
 
   // One pipeline run, however many reports come out of it. Slicing the finished
   // graph rather than resolving each package on its own is what keeps a
@@ -149,7 +170,7 @@ export async function runScan(
         )
 
   for (const target of targets) {
-    const serialNumber = dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
+    const serialNumber = fixedSerial ?? dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
     const bom = buildBom(target.graph, { specVersion, timestamp, serialNumber })
 
     const findingsDocument: FindingsDocument = {
@@ -239,6 +260,43 @@ function namesToScan(graph: DependencyGraph, workspace: string): string[] {
     )
   }
   return names
+}
+
+/**
+ * Accept an ISO 8601 instant and nothing else.
+ *
+ * `new Date('nonsense')` is an Invalid Date whose toISOString() throws, and a
+ * loose parse would let `--timestamp 2026` through as midnight on New Year — a
+ * plausible-looking wrong answer in a field an auditor reads as "when was this
+ * scanned".
+ */
+function parseTimestamp(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new CradleError(
+      `--timestamp '${value}' is not a valid ISO 8601 timestamp`,
+      'Pass something like 2026-09-26T12:00:00Z. Omit it to stamp the current time.',
+    )
+  }
+  return parsed.toISOString()
+}
+
+/**
+ * CycloneDX requires `serialNumber` to be a UUID URN, and the schema enforces the
+ * pattern. Checking here means a typo is an error with a hint rather than a
+ * validation failure in whatever consumes the file next.
+ */
+function parseSerialNumber(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  if (!/^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)) {
+    throw new CradleError(
+      `--serial-number '${value}' is not a UUID URN`,
+      'CycloneDX requires the form urn:uuid:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, lowercase. ' +
+        'Omit it to generate a fresh one.',
+    )
+  }
+  return value
 }
 
 function isSpecVersion(value: string | undefined): value is CycloneDxSpecVersion {

@@ -83,6 +83,22 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   pull-request comment, and neither can honestly speak for several packages. Run
   one check per package.
 
+- **`--timestamp <iso>` and `--serial-number <urn>` for reproducible builds.** Two
+  runs over the same lockfile with the same values produce byte-identical
+  `sbom.cdx.json`, `findings.json` **and** `report.html`. Both defaults stay as they
+  were — a report should say when it was made, and a fresh serial number is what
+  lets a reader tell two BOMs apart — so these override rather than replace them.
+
+  Neither value is passed through unchecked. A timestamp is normalised to ISO UTC,
+  because `2026-09-26T14:00:00+02:00` and `2026-09-26T12:00:00Z` are the same
+  instant and reproducibility would be a lie if the spelling leaked into the
+  output; an unparseable one is an error, since `new Date('2026')` would otherwise
+  be accepted as midnight on New Year in the field an auditor reads as "when was
+  this scanned". A serial number must be the UUID URN CycloneDX requires.
+  `--serial-number` refuses `--workspace all`, because one serial number across
+  several packages would produce several documents claiming to be the same
+  document.
+
 ### Changed
 
 - **The documentation overstated OpenVEX conformance, and now says what is true.**

@@ -1032,3 +1032,39 @@ und wird weggelassen. Eine Note, die **gar keine** Komponente im Repository nenn
 — `unresolved-dependency` trägt nur einen Namen und hat per Definition keine —
 bleibt erhalten. Sie wegzulassen würde sie aus *jedem* Report entfernen statt sie
 in den richtigen zu verschieben.
+
+## 17. Reproduzierbare SBOMs: `--timestamp`, `--serial-number`
+
+Zwei Dinge verhindern, dass zwei Läufe über dieselbe Lockfile dieselben Bytes
+erzeugen, und **beide sind Absicht**: die SBOM stempelt den Zeitpunkt ihrer
+Entstehung, und sie prägt eine frische `serialNumber`, damit ein Prüfer zwei BOMs
+auseinanderhalten kann (§6.2). Keines davon ist falsch — es ist nur nicht, was ein
+Buildsystem will. Deshalb sind beide **überschreibbar statt entfernt**; der
+Default bleibt genau wie er war.
+
+`--timestamp <iso>` und `--serial-number <urn>`. Zwei Läufe mit denselben Werten
+erzeugen byte-identische `sbom.cdx.json`, `findings.json` und `report.html` — alle
+drei, nicht nur die SBOM, weil der Report Zeitstempel und Seriennummer ebenfalls
+trägt.
+
+**Beide Eingaben werden geprüft, nicht durchgereicht.**
+
+* Ein Zeitstempel wird geparst und **auf ISO-UTC normalisiert**. `2026-09-26T14:00:00+02:00`
+  und `2026-09-26T12:00:00Z` sind derselbe Augenblick; würde die Schreibweise in
+  die Ausgabe durchschlagen, wäre die Reproduzierbarkeit eine Lüge. Ein nicht
+  parsbarer Wert bricht ab: `new Date('2026')` ist ein gültiges Datum, und ein
+  lockerer Parse würde das als Neujahrsmitternacht akzeptieren — eine plausibel
+  aussehende falsche Antwort in genau dem Feld, das ein Auditor als „wann wurde
+  das gescannt" liest.
+* Eine Seriennummer muss die von CycloneDX verlangte UUID-URN-Form haben. Der
+  Tippfehler ist dann ein Fehler mit Handlungsanweisung statt eine
+  Validierungsmeldung in dem Werkzeug, das die Datei als nächstes liest.
+
+**`--serial-number` verträgt sich nicht mit `--workspace all`** und bricht ab. Eine
+Seriennummer identifiziert **ein** BOM; dieselbe an sechs Pakete zu vergeben
+erzeugt sechs Dokumente, die behaupten, dasselbe Dokument zu sein. Für einen
+reproduzierbaren Monorepo-Build läuft man ein Paket auf einmal:
+`cradle scan --workspace <name> --serial-number <urn>`.
+
+Der Zeitstempel wird dagegen bewusst **über alle Workspaces geteilt** — alle
+Reports stammen aus einem Scan zu einem Augenblick.
