@@ -76,9 +76,16 @@ Alle Angaben gegen den Verordnungstext geprüft. Quellen am Ende des Dokuments.
 
 Für **aktiv ausgenutzte Schwachstellen** und **schwerwiegende Sicherheitsvorfälle**:
 
-1. Frühwarnung binnen **24 Stunden**
-2. Schwachstellenmeldung binnen **72 Stunden**
-3. Abschlussbericht binnen **14 Tagen** (bei Vorfällen: **1 Monat**)
+1. Frühwarnung binnen **24 Stunden** ab Kenntnisnahme
+2. Schwachstellenmeldung binnen **72 Stunden** ab Kenntnisnahme
+3. Abschlussbericht binnen **14 Tagen** — **ab Verfügbarkeit einer Abhilfe- oder
+   Minderungsmaßnahme**, nicht ab Kenntnisnahme (bei Vorfällen: **1 Monat**)
+
+**Korrektur (siehe §18):** Die frühere Fassung dieses Abschnitts schrieb
+„Abschlussbericht binnen 14 Tagen" ohne den Anknüpfungspunkt. Art. 14 Abs. 2
+Buchst. c knüpft die Frist an die **Verfügbarkeit der Maßnahme**; die Kommission
+bestätigt das ausdrücklich. Der Unterschied ist erheblich — in beide Richtungen —
+und eine Meldevorlage darf ihn nicht verwischen.
 
 Meldeweg: ENISA Single Reporting Platform **plus** das zuständige nationale CSIRT.
 Formulierungen wie „24-Stunden-Meldepflicht an ENISA" sind verkürzt und gehören

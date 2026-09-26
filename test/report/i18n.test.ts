@@ -203,8 +203,9 @@ describe('the report in German', () => {
     // parsing it must not have to know which language the page was rendered in.
     const { graph, findings } = await scanned('npm-vulnerable')
     const extract = (html: string): string =>
-      html.match(/<script type="application\/json" id="cradle-data">\n([\s\S]*?)\n<\/script>/)?.[1] ??
-      ''
+      html.match(
+        /<script type="application\/json" id="cradle-data">\n([\s\S]*?)\n<\/script>/,
+      )?.[1] ?? ''
 
     expect(extract(buildReport({ ...BASE, graph, findings, lang: 'de' }))).toBe(
       extract(buildReport({ ...BASE, graph, findings, lang: 'en' })),

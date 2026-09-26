@@ -66,9 +66,11 @@ Two things are worth getting right about what that actually means.
 > not work without it. That is our argument, not the legislator's.
 
 > **The reporting duty is not one deadline, it is three.**
-> Article 14: an early warning within **24 hours**, a vulnerability notification
-> within **72 hours**, and a final report within **14 days** — to the ENISA single
-> reporting platform *and* your national CSIRT.
+> Article 14: an early warning within **24 hours** of becoming aware, a
+> vulnerability notification within **72 hours**, and a final report within
+> **14 days of a corrective or mitigating measure becoming available** — note
+> which clock that last one runs on. All of it to the ENISA single reporting
+> platform *and* your national CSIRT, simultaneously.
 
 Container images have had good tooling for years. npm projects have SBOM
 generators, and then you are on your own for the part that takes the time:

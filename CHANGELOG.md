@@ -156,8 +156,31 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   byte-identical in both languages, because it is a record of the scan rather than
   prose.
 
+- **`cradle notify <advisory-id> --stage early-warning|notification|final`** —
+  Article 14 report drafts, one per stage, filled in from `.cradle/findings.json`
+  and `.cradle/config.json`. Each cites its paragraph, its deadline and what
+  starts the clock, and names both destinations: the ENISA single reporting
+  platform **and** the coordinating CSIRT, simultaneously (Art. 14(1)).
+
+  It reads the scan rather than the network, so a 24-hour clock never waits on an
+  API, and the draft cannot disagree with the report it accompanies. Everything a
+  lockfile cannot answer — the Member States the product is placed on, any
+  malicious actors, the version of *your* product that carries the fix — is a
+  visible `[TO BE COMPLETED]` placeholder, and the console says how many are left.
+
+  **It does not decide that you have to report, and it never submits anything.**
+  Article 14 concerns *actively exploited* vulnerabilities; cradle knows an
+  advisory exists and that the lockfile resolves the affected version, and cannot
+  know whether anyone is exploiting it. That sits at the top of every draft, not
+  in a footnote.
+
 ### Changed
 
+- **The Article 14 final-report deadline is stated correctly now.** The README and
+  `SPEC.md` both said "a final report within 14 days", omitting what the clock runs
+  from. Art. 14(2)(c) ties it to a **corrective or mitigating measure becoming
+  available**, not to becoming aware — the Commission says so explicitly. The
+  difference matters in both directions, and a reporting template must not blur it.
 - **The documentation overstated OpenVEX conformance, and now says what is true.**
   `cradle:expires` was described as something "conforming tools ignore". They do
   not: OpenVEX has no extension point, its schema sets `additionalProperties:

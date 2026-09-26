@@ -1,6 +1,7 @@
 import { CradleError } from '../core/errors.js'
 import { TOOL_VERSION } from '../version.generated.js'
 import { type CheckDependencies, runCheck } from './check.js'
+import { type NotifyDependencies, runNotify } from './notify.js'
 import { runScan, type ScanDependencies } from './scan.js'
 import { runSuppress, type SuppressDependencies } from './suppress.js'
 
@@ -13,6 +14,7 @@ Commands:
   scan        Resolve dependencies and write an SBOM to .cradle/
   check       Fail CI on findings that are new since the baseline
   suppress    Record why a finding does not apply, as an OpenVEX statement
+  notify      Draft a CRA Article 14 report for one advisory
 
 Options:
   -h, --help      Show this help
@@ -30,7 +32,10 @@ export async function main(
   stdout: NodeJS.WritableStream,
   stderr: NodeJS.WritableStream,
   /** Injection point for tests; production passes nothing. */
-  dependencies: ScanDependencies & SuppressDependencies & CheckDependencies = {},
+  dependencies: ScanDependencies &
+    SuppressDependencies &
+    CheckDependencies &
+    NotifyDependencies = {},
 ): Promise<number> {
   const [command, ...rest] = argv
 
@@ -51,6 +56,8 @@ export async function main(
         return await runSuppress(rest, stdout, dependencies)
       case 'check':
         return await runCheck(rest, stdout, dependencies)
+      case 'notify':
+        return await runNotify(rest, stdout, dependencies)
       default:
         stderr.write(
           `cradle: unknown command '${command}'.\nRun 'cradle --help' to see the available commands.\n`,
