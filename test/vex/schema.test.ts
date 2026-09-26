@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { emptyDocument, serializeDocument, upsertStatement } from '../../src/core/vex/document.js'
 import { VEX_JUSTIFICATIONS, type VexDocument, type VexStatement } from '../../src/types/index.js'
-import {
-  cradleExtensionKeys,
-  validateOpenVex,
-  withoutCradleExtensions,
-} from '../support/schema.js'
+import { cradleExtensionKeys, validateOpenVex, withoutCradleExtensions } from '../support/schema.js'
 
 const TIMESTAMP = '2026-09-26T09:00:00.000Z'
 
@@ -105,9 +101,7 @@ describe('vex.json against the official OpenVEX schema', () => {
   it('shows that an affected statement without an action is invalid', () => {
     // Worth a test rather than a comment: this is the trap for anyone editing
     // vex.json by hand, and cradle's own parser accepts it.
-    const doc = document(
-      affected({ status_notes: 'known' }),
-    )
+    const doc = document(affected({ status_notes: 'known' }))
     const { valid, errors } = validateOpenVex(doc)
     expect(valid).toBe(false)
     expect(errors.join(' ')).toContain('action_statement')

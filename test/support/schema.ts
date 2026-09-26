@@ -111,7 +111,7 @@ export function cradleExtensionKeys(document: unknown): string[] {
   const found: string[] = []
   const walk = (node: unknown, path: string): void => {
     if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, `${path}[${index}]`))
+      for (const [index, item] of node.entries()) walk(item, `${path}[${index}]`)
       return
     }
     if (node === null || typeof node !== 'object') return

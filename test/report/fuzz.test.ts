@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { escapeHtml } from '../../src/report/escape.js'
 import { buildReport, type ReportInput } from '../../src/report/html.js'
 import type {
   DependencyGraph,
@@ -6,7 +7,6 @@ import type {
   ReadinessReport,
   ResolveNote,
 } from '../../src/types/index.js'
-import { escapeHtml } from '../../src/report/escape.js'
 import {
   FORBIDDEN_ELEMENTS,
   FORBIDDEN_IN_TAGS,
@@ -50,7 +50,10 @@ function poisonedReport(value: string, url: string): string {
         version: value,
         purl: 'pkg:npm/x@1.0.0',
         location: value,
-        licenses: [{ kind: 'name', name: value }, { kind: 'expression', expression: value }],
+        licenses: [
+          { kind: 'name', name: value },
+          { kind: 'expression', expression: value },
+        ],
         licenseUnknown: false,
         hashes: [{ alg: 'SHA-512', content: 'ab'.repeat(64) }],
         resolvedUrl: url,
