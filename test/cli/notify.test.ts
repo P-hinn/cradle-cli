@@ -229,12 +229,22 @@ describe('cradle notify, refusals', () => {
   })
 
   it('needs an advisory id', async () => {
-    const project = await scannedProject()
-    const { code, err } = await run(['notify', project, '--stage', 'final'])
-    // The path is taken as the advisory id, so this fails on the lookup and lists
-    // what the scan does have - which is the useful error either way.
+    // No positionals at all, so nothing is read and nothing depends on where the
+    // test happens to be running from.
+    const { code, err } = await run(['notify', '--stage', 'final'])
     expect(code).toBe(2)
-    expect(err).toMatch(/No finding for|needs an advisory id/)
+    expect(err).toContain('needs an advisory id')
+  })
+
+  it('treats a path in the first position as an advisory id, and says so', async () => {
+    // `cradle notify ./my-project --stage final` is an easy mistake: the first
+    // positional is always the advisory. The error has to be legible rather than
+    // a complaint about a missing file.
+    const project = await scannedProject()
+    const { code, err } = await run(['notify', './my-project', project, '--stage', 'final'])
+    expect(code).toBe(2)
+    expect(err).toContain("No finding for './my-project'")
+    expect(err).toContain('This scan has:')
   })
 
   it('says to scan first when there is no findings file', async () => {

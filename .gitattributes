@@ -1,0 +1,16 @@
+# Check out with LF everywhere, including Windows.
+#
+# Without this, a Windows checkout converts text files to CRLF and Biome's
+# formatter rejects every one of them — 117 errors on a repository that is
+# clean on macOS and Linux. The CI matrix found it on its first run, which is
+# what the matrix is for.
+#
+# The lockfile fixtures matter most: cradle reads them byte for byte, and a
+# lockfile whose line endings changed on checkout is not the lockfile the
+# package manager wrote.
+* text=auto eol=lf
+
+# Binary, so git never touches them.
+*.png binary
+*.jpg binary
+*.ico binary

@@ -107,9 +107,10 @@ describe('action.yml', () => {
   })
 
   it('pins the action versions it depends on', () => {
+    // A major tag or a full version; see the note in test/workflows.test.ts.
     for (const step of ACTION.runs.steps) {
       if (step.uses === undefined) continue
-      expect(step.uses, step.name).toMatch(/@v\d+$/)
+      expect(step.uses, step.name).toMatch(/@v\d+(\.\d+\.\d+)?$/)
     }
   })
 })
@@ -166,9 +167,10 @@ describe('release workflow', () => {
   })
 
   it('pins every action it uses', () => {
+    // A major tag or a full version; see the note in test/workflows.test.ts.
     for (const step of RELEASE_JOB?.steps ?? []) {
       if (step.uses === undefined) continue
-      expect(step.uses, step.uses).toMatch(/@v\d+$/)
+      expect(step.uses, step.uses).toMatch(/@v\d+(\.\d+\.\d+)?$/)
     }
   })
 

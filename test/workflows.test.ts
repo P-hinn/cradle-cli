@@ -222,10 +222,14 @@ describe('every workflow', () => {
       })
 
       it('pins every action it uses', () => {
+        // A major tag (@v5) or a full version (@v2.4.4). Both are pins; a full
+        // version is the stronger one, and some actions - ossf/scorecard-action
+        // among them - publish no floating major at all, so requiring @vN alone
+        // would force a reference that does not resolve.
         for (const job of Object.values(parsed.jobs)) {
           for (const step of job.steps) {
             if (step.uses === undefined) continue
-            expect(step.uses, step.uses).toMatch(/@v\d+$/)
+            expect(step.uses, step.uses).toMatch(/@v\d+(\.\d+\.\d+)?$/)
           }
         }
       })
