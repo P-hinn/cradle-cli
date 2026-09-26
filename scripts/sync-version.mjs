@@ -17,6 +17,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const check = process.argv.includes('--check')
 
@@ -61,7 +62,10 @@ for (const file of TAG_REFERENCES) {
 
 if (!check) {
   // The demo image embeds a recorded session that starts with the version line.
-  execFileSync(process.execPath, [new URL('gen-demo-svg.mjs', import.meta.url).pathname], {
+  // fileURLToPath, not .pathname: on Windows the latter yields "/D:/a/..." with
+  // a leading slash before the drive letter, which node cannot run. This only
+  // ever surfaced once the CI matrix included Windows.
+  execFileSync(process.execPath, [fileURLToPath(new URL('gen-demo-svg.mjs', import.meta.url))], {
     stdio: 'ignore',
   })
 }

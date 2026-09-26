@@ -244,6 +244,12 @@ that is absent for an ordinary project.
   beyond formatting: cradle reads lockfiles byte for byte, and a lockfile whose
   line endings changed on checkout is not the one the package manager wrote. The
   CI matrix found it on its first run.
+- **`npm run build` failed on Windows**, in `scripts/sync-version.mjs`:
+  `new URL(…).pathname` yields `/D:/a/project/x.mjs` there — a leading slash in
+  front of the drive letter, which node cannot execute. A pre-existing bug that
+  only ever surfaced once CI included Windows, which is the case the matrix was
+  added for. A test now greps the build scripts for the pattern, since it is
+  invisible on every other platform.
 - **`ossf/scorecard-action@v2` does not resolve.** That action publishes no
   floating major tag, and the repo-wide test requiring `@vN` had forced the
   reference. The rule now accepts a major tag *or* a full version — both are
