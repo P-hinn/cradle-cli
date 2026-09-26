@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { DependencyGraph, ResolvedLicense } from '../../types/index.js'
+import type { DependencyGraph, ResolvedLicense, ResolveNote } from '../../types/index.js'
 import { CradleError } from '../errors.js'
 import { normalizeLicense } from '../sbom/license.js'
 import { buildGraph, type RawPackage, type RootManifest } from './graph.js'
@@ -20,6 +20,7 @@ interface LockEntry {
   peer?: boolean
   link?: boolean
   extraneous?: boolean
+  inBundle?: boolean
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
@@ -30,6 +31,10 @@ interface Lockfile {
   lockfileVersion?: number
   packages?: Record<string, LockEntry>
 }
+
+/** Ranges that mean "not from a registry", and so "no registry identity". */
+const LOCAL_RANGE = /^(file:|link:|portal:)/
+const GIT_RESOLVED = /^(git\+|git:)/
 
 export interface ResolveNpmOptions {
   projectDir: string
@@ -58,6 +63,22 @@ export async function resolveNpm(options: ResolveNpmOptions): Promise<Dependency
   const entries = new Map(Object.entries(lock.packages ?? {}))
   const packages = new Map<string, RawPackage>()
   const licenses = new Map<string, ResolvedLicense[]>()
+  const notes: ResolveNote[] = []
+
+  // Every name any manifest in this tree declares with a file:, link: or portal:
+  // range. Such a package is materialised outside node_modules exactly like a
+  // workspace member is, and the lockfile entry looks identical - so the declared
+  // range is the only thing that tells them apart. Calling a `file:` dependency a
+  // workspace is not a harmless mislabel: it would appear in the workspace list
+  // as one of the product's own packages.
+  const localByRange = new Set<string>()
+  for (const entry of entries.values()) {
+    for (const ranges of [entry.dependencies, entry.devDependencies, entry.optionalDependencies]) {
+      for (const [name, range] of Object.entries(ranges ?? {})) {
+        if (typeof range === 'string' && LOCAL_RANGE.test(range)) localByRange.add(name)
+      }
+    }
+  }
 
   // A workspace is materialised twice: once at its real path, and once as a link
   // in node_modules. The link is only a pointer, so it is followed, never listed.
@@ -89,8 +110,55 @@ export async function resolveNpm(options: ResolveNpmOptions): Promise<Dependency
     if (typeof entry.resolved === 'string' && entry.resolved.startsWith('http')) {
       pkg.resolvedUrl = entry.resolved
     }
-    // Anything outside node_modules is a workspace of this repository.
-    if (!location.startsWith('node_modules/')) pkg.workspace = true
+    // Outside node_modules means materialised in this repository: either a
+    // workspace member or a local path dependency. Only the declared range
+    // separates them (see localByRange above).
+    const local = localByRange.has(name)
+    if (!location.startsWith('node_modules/') && !local) pkg.workspace = true
+
+    if (local) {
+      notes.push({
+        kind: 'local-dependency',
+        subject: `${name}@${version}`,
+        message: `${name} is installed from a local path, not from a registry.`,
+        hint:
+          'Its purl names a registry package that may not be the same code, and advisory ' +
+          'lookups will match on that name. Vendored code has to be reviewed on its own.',
+      })
+    }
+
+    const resolved = typeof entry.resolved === 'string' ? entry.resolved : ''
+    if (GIT_RESOLVED.test(resolved)) {
+      notes.push({
+        kind: 'git-dependency',
+        subject: `${name}@${version}`,
+        message: `${name} is installed from git, not from a registry.`,
+        hint:
+          `The version ${version} is what that commit's package.json claims; it is not a ` +
+          'published release. Advisories matched against it may not describe this code.',
+      })
+    } else if (entry.inBundle === true) {
+      notes.push({
+        kind: 'bundled-dependency',
+        subject: `${name}@${version}`,
+        message: `${name} ships inside its parent package's tarball.`,
+        hint:
+          'It has no integrity hash of its own, because it was never fetched separately. ' +
+          "Its parent's hash covers it.",
+      })
+    } else if (name !== nameFromLocation(location) && location.startsWith('node_modules/')) {
+      // An `npm:` alias. The real name is what advisories are keyed on, so that
+      // is what the component carries - but the name in package.json is the one
+      // the reader will search for and not find.
+      notes.push({
+        kind: 'aliased-dependency',
+        subject: `${name}@${version}`,
+        message: `${name} is installed under the name ${nameFromLocation(location) ?? location}.`,
+        hint:
+          `The SBOM records the published name ${name}, because that is what advisories are ` +
+          'keyed on. Searching it for the alias will find nothing.',
+      })
+    }
 
     packages.set(location, pkg)
     licenses.set(location, normalizeLicense(entry))
@@ -122,17 +190,35 @@ export async function resolveNpm(options: ResolveNpmOptions): Promise<Dependency
   const root = entries.get('') ?? {}
   const rootProd = new Map<string, string>()
   const rootDev = new Map<string, string>()
-  for (const name of [
-    ...Object.keys(root.dependencies ?? {}),
-    ...Object.keys(root.optionalDependencies ?? {}),
-  ]) {
-    const target = resolveFrom('', name, entries, follow)
-    if (target !== undefined && packages.has(target)) rootProd.set(name, target)
+
+  // A declared dependency with no entry in the lockfile cannot be resolved, and
+  // it used to be dropped without a word - so the component count and every
+  // finding derived from it silently described a smaller project than the one in
+  // package.json.
+  const optionalNames = new Set(Object.keys(root.optionalDependencies ?? {}))
+  const linkRoot = (names: Iterable<string>, into: Map<string, string>): void => {
+    for (const name of names) {
+      const target = resolveFrom('', name, entries, follow)
+      if (target !== undefined && packages.has(target)) {
+        into.set(name, target)
+        continue
+      }
+      // An unmet optional dependency is the normal case, not a problem: npm
+      // records it and skips it on platforms where it does not apply.
+      if (optionalNames.has(name)) continue
+      notes.push({
+        kind: 'unresolved-dependency',
+        subject: name,
+        message: `${name} is declared in package.json but absent from the lockfile.`,
+        hint:
+          'It is missing from the SBOM and from the vulnerability lookup. Run your package ' +
+          "manager's install to write a complete lockfile.",
+      })
+    }
   }
-  for (const name of Object.keys(root.devDependencies ?? {})) {
-    const target = resolveFrom('', name, entries, follow)
-    if (target !== undefined && packages.has(target)) rootDev.set(name, target)
-  }
+
+  linkRoot([...Object.keys(root.dependencies ?? {}), ...optionalNames], rootProd)
+  linkRoot(Object.keys(root.devDependencies ?? {}), rootDev)
   // Workspaces are declared by the root and are part of the product.
   for (const [location, pkg] of packages) {
     if (pkg.workspace !== true) continue
@@ -146,8 +232,10 @@ export async function resolveNpm(options: ResolveNpmOptions): Promise<Dependency
     packages,
     rootProd,
     rootDev,
+    rootOptional: optionalNames,
     includeDev: options.includeDev,
     licenses,
+    notes,
   })
 }
 

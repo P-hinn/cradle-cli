@@ -81,6 +81,40 @@ export interface RootComponent {
   licenses: ResolvedLicense[]
 }
 
+/**
+ * Why a note exists. Each value is a lockfile shape whose meaning cradle cannot
+ * fully carry into an SBOM, and each one is reported rather than dropped.
+ *
+ * A silently skipped dependency is the worst failure this tool has: the SBOM
+ * still looks complete, the finding count still looks like an answer, and
+ * nothing says a package was left out. `not assessable` beats a confident blank
+ * in the readiness checklist for the same reason (SPEC.md §6.5), and it applies
+ * here too.
+ */
+export type ResolveNoteKind =
+  /** Resolved from a git URL, so there is no registry version to match advisories against. */
+  | 'git-dependency'
+  /** Resolved from a local path (`file:`, `link:`, `portal:`), so it has no registry identity. */
+  | 'local-dependency'
+  /** Installed under a different name than it is published under (`npm:` alias). */
+  | 'aliased-dependency'
+  /** Yarn applied a patch, so the installed code is not the published code. */
+  | 'patched-dependency'
+  /** Declared in the manifest but absent from the lockfile, so it could not be resolved. */
+  | 'unresolved-dependency'
+  /** Shipped inside its parent's tarball rather than fetched separately. */
+  | 'bundled-dependency'
+
+export interface ResolveNote {
+  kind: ResolveNoteKind
+  /** The package this is about, as `name` or `name@version`. */
+  subject: string
+  /** What cradle did, in one sentence, in the user's terms. */
+  message: string
+  /** What the reader should do about it, or how to read the output. */
+  hint: string
+}
+
 export interface DependencyGraph {
   packageManager: PackageManager
   /** Absolute path of the scanned project. */
@@ -93,6 +127,11 @@ export interface DependencyGraph {
   includeDev: boolean
   /** Names of workspace packages, empty when the project is not a monorepo. */
   workspaces: string[]
+  /**
+   * Shapes in the lockfile that cradle could not represent faithfully, reported
+   * so that nothing is skipped in silence. Empty for an ordinary project.
+   */
+  notes: ResolveNote[]
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +266,12 @@ export interface FindingsDocument {
    * exactly what an audit wants to see.
    */
   suppressed: Finding[]
+  /**
+   * Lockfile shapes cradle could not represent faithfully. Recorded here so that
+   * a machine reading this file sees the same caveats the report shows a human,
+   * rather than a component list that merely looks complete.
+   */
+  notes: ResolveNote[]
 }
 
 // ---------------------------------------------------------------------------

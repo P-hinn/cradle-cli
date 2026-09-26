@@ -626,7 +626,16 @@ nichts direkt auf die Platte oder die Konsole. Dateizugriff und Ausgabe passiere
   | `npm-workspaces` | Workspace-Links, automatisch installierter Peer-Dep, Paket ohne Lizenzfeld, privates Root |
   | `npm-duplicates` | Dasselbe Paket zweimal im Baum, verschachtelt unter einem Dependent |
   | `pnpm-basic`, `yarn-classic-basic`, `yarn-berry-basic` | Dieselben Abhängigkeiten wie `npm-basic`, damit die vier Parser gegeneinander geprüft werden können |
+  | `npm-edge-cases` | `npm:`-Alias, `git+`, `file:`, `bundledDependencies`, optionale Dep, `overrides`, private Registry, deklariert-aber-nicht-in-der-Lockfile (§15) |
+  | `pnpm-edge-cases` | git (Key trägt URL), `file:` (`type: directory`, keine Version), `link:` außerhalb des Workspace, unaufgelöst |
+  | `yarn-berry-edge-cases` | Alias über `resolution`, `patch:`, git, `portal:` mit `linkType: soft`, `::locator=`-Suffix |
+  | `yarn-classic-edge-cases` | git und `file:` allein aus dem Descriptor, unaufgelöst |
   | `detect/*` | Lockfile-Erkennung für npm, pnpm, Yarn Classic, Yarn Berry, Bun, sowie fehlende Lockfile und Nicht-Projekt |
+
+  Jedes `*-edge-cases`-Fixture trägt eine `README.md`, die festhält, womit es
+  erzeugt wurde und welche Einträge von Hand geschrieben sind. Diese Unterscheidung
+  ist nicht Kosmetik: drei der in §15 beschriebenen Fehler waren zuerst durch
+  *falsch geratene* Fixtures verdeckt.
 
   Die pnpm- und Yarn-Fixtures tragen ein eingechecktes `node_modules` aus **nur
   `package.json`-Dateien** — kein Code —, weil ihre Lockfiles keine Lizenzen
@@ -826,3 +835,107 @@ Absturz sieht am Exit-Code identisch aus. Die Evidenzdateien werden deshalb auf
 Existenz geprüft — und zwar **im Scan-Schritt, vor dem Publish**. Vorher fiel ein
 fehlendes SBOM erst beim Upload auf, also nachdem die Version auf der Registry
 war.
+
+## 15. Randfälle der Lockfile-Parser — und die Regel dahinter
+
+### 15.1 Die Regel
+
+Ein Lockfile enthält Formen, die eine SBOM nicht exakt ausdrücken kann: ein Paket
+unter einem anderen Namen installiert, aus einem git-Commit gebaut, aus einem
+Verzeichnis vendort, vom Paketmanager gepatcht.
+
+Die Regel ist **nicht** „alles unterstützen". Sie ist: **nichts stillschweigend
+verwerfen.** Eine übersprungene Abhängigkeit hinterlässt eine Ausgabe, die
+weiterhin vollständig *aussieht* — die Komponentenliste ist plausibel, die
+Finding-Zahl liest sich wie eine Antwort, und nichts sagt, dass ein Paket fehlt.
+Das ist strikt schlechter als es zu sagen, aus demselben Grund, aus dem die
+Readiness-Checkliste „nicht prüfbar" meldet statt eines zuversichtlichen leeren
+Felds (§6.5).
+
+Umgesetzt als `ResolveNote` mit `kind`, `subject`, `message` und `hint`. Jede Note
+steht in der Konsolenausgabe, in `findings.json` (damit eine Maschine dieselben
+Vorbehalte sieht wie ein Mensch) und im Report als eigener Abschnitt **vor** der
+Komponententabelle: alles darüber ist eine Zahl, und eine Zahl kann nicht sagen,
+dass eines der gezählten Dinge nicht ganz das ist, wonach es aussieht. Bei einem
+gewöhnlichen Projekt fehlt der Abschnitt vollständig, damit seine Anwesenheit
+etwas bedeutet.
+
+Sechs Arten: `git-dependency`, `local-dependency`, `aliased-dependency`,
+`patched-dependency`, `unresolved-dependency`, `bundled-dependency`.
+
+### 15.2 Entscheidung: der veröffentlichte Name gewinnt
+
+Bei einem `npm:`-Alias (`"is-alias": "npm:@sindresorhus/is@^7.0.1"`) trägt die
+Komponente **`@sindresorhus/is`**, nicht `is-alias`. Begründung: OSV schlüsselt
+Advisories nach dem veröffentlichten Namen, und eine purl auf `is-alias` würde ein
+Paket benennen, das es nicht gibt. Der Alias-Name erscheint dadurch nirgends in
+der Ausgabe — genau deshalb gibt es die Note.
+
+### 15.3 Gefundene Fehler
+
+Die folgenden waren echt und sind behoben. Sie stehen hier vollständig, weil jeder
+einzelne dieselbe Signatur hatte: eine plausibel aussehende Ausgabe.
+
+**npm**
+
+* Eine `file:`-Abhängigkeit wurde als **Workspace** geführt. Beide werden
+  außerhalb von `node_modules` materialisiert und ihre Lockfile-Einträge sind
+  nicht unterscheidbar; nur der deklarierte Range trennt sie. Folge: fremder Code
+  stand in der Workspace-Liste als eigenes Paket des Produkts.
+* Eine deklarierte, aber in der Lockfile fehlende Abhängigkeit verschwand
+  wortlos.
+
+**pnpm**
+
+* Eine git-Abhängigkeit bekam eine **URL als Version** —
+  `pkg:npm/left-pad@https://codeload.github.com/…`. Der Key trägt bei pnpm die
+  Tarball-URL; die echte Version steht in einem eigenen Feld.
+* Eine `file:`-Abhängigkeit bekam den **Spezifikator als Version** —
+  `pkg:npm/acme-local-lib@file:local-lib`. Bei `type: directory` steht die Version
+  nirgends in der Lockfile; sie kommt jetzt aus der `package.json` des
+  Verzeichnisses. Ist sie auch dort nicht lesbar, wird die Komponente
+  weggelassen **und gemeldet**, nicht erfunden.
+* Monorepos waren flachgeklopft und ihre Mitglieder unerreichbar (§14.1 unten,
+  gefunden durch den Corpus).
+
+**Yarn (beide)**
+
+* `splitDescriptor` teilte am **letzten** `@`. Richtig ist der **erste** nach
+  Position 0, weil ein Scope-`@` auf Position 0 sitzt und der Range danach
+  beliebig viele weitere enthalten darf. Ergebnis vorher: Namen wie
+  `typescript@patch:typescript`.
+* Berry nahm den Namen aus dem Descriptor statt aus `resolution`. Bei einem Alias
+  weichen sie ab, und es entstand eine Komponente `is-alias` mit einer purl für
+  ein nicht existierendes Paket.
+* Berry behandelte `linkType: soft` als „ist ein Workspace". Das gilt auch für
+  `portal:` und `link:`, die damit aus der SBOM fielen und anschließend als „nicht
+  in der Lockfile" gemeldet wurden — obwohl sie sichtbar darin standen. Maßgeblich
+  ist ausschließlich eine `@workspace:`-Resolution.
+* Berry speicherte Descriptors nur protokoll-gestrippt. Für einen Alias ist die
+  gestrippte Form bedeutungslos, also löste er nie auf. Jetzt werden beide
+  Schreibweisen registriert, zusätzlich die ohne `::locator=`-Suffix.
+* Yarns eingebaute `patch:`-Einträge wurden lautlos verworfen. Sie bleiben
+  **eine** Komponente (zwei wären Doppelzählung), aber mit Note: der Code auf der
+  Platte ist nicht der veröffentlichte.
+* Yarn Classic erkannte git und `file:` überhaupt nicht, weil nur Berrys
+  `resolution` gelesen wurde. Classic hat kein solches Feld; die Erkennung liest
+  jetzt den Descriptor-Range.
+
+**Gemeinsam**
+
+* Eine **optionale Root-Abhängigkeit** war als `prod` gelabelt. Der
+  `optional`-Kind galt nur für Paket-Kanten, nicht für die des Roots — CycloneDX
+  hat `scope: optional`, und die Information ging verloren.
+
+### 15.4 Was bewusst nicht gemeldet wird
+
+Eine **unerfüllte optionale Abhängigkeit**. Das ist der Normalfall und
+funktionierendes Verhalten des Paketmanagers; sie zu melden würde die Notes
+entwerten, die tatsächlich etwas bedeuten.
+
+### 15.5 Private Registries
+
+Die Tarball-URL landet in `externalReferences` und **nirgends sonst**. Nicht in
+der purl, nicht in einem Hash-Feld. Eine purl, die einen internen Host und ein
+Token einbettet, wäre keine gültige purl — und würde die Registry in jede SBOM
+tragen, die an einen Dritten geht. Ein Test hält das fest.

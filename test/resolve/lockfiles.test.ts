@@ -193,10 +193,16 @@ describe('parseBerryLockfile', () => {
   linkType: soft
 `
 
-  it('strips the npm protocol from descriptors and ranges', () => {
+  it('resolves a descriptor with the npm protocol and without it', () => {
+    // Both spellings have to work. package.json declares `^1.0.0` while the
+    // lockfile keys the entry as `npm:^1.0.0`, so the stripped form is what an
+    // ordinary dependency looks up — but stripping it away was what lost aliases,
+    // whose range is `npm:@scope/real@^1.0.0` and means nothing once the protocol
+    // is gone. So the entry answers to both, rather than to one.
     const entries = parseBerryLockfile(LOCK, 'yarn.lock')
     const pkg = entries.find((entry) => entry.name === '@scope/pkg')
-    expect(pkg?.descriptors).toEqual(['@scope/pkg@^1.0.0'])
+    expect(pkg?.descriptors).toContain('@scope/pkg@^1.0.0')
+    expect(pkg?.descriptors).toContain('@scope/pkg@npm:^1.0.0')
     expect(pkg?.dependencies.get('ms')).toBe('^2.1.0')
   })
 

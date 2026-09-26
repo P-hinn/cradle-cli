@@ -40,6 +40,7 @@ function graph(...components: ResolvedComponent[]): DependencyGraph {
     edges: new Map(),
     includeDev: false,
     workspaces: [],
+    notes: [],
   }
 }
 

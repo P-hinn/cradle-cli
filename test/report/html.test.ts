@@ -3,6 +3,7 @@ import { resolveNpm } from '../../src/core/resolve/npm.js'
 import { NULL_CACHE } from '../../src/core/vulns/cache.js'
 import { resolveFindings } from '../../src/core/vulns/findings.js'
 import { queryOsv } from '../../src/core/vulns/osv.js'
+import { escapeHtml } from '../../src/report/escape.js'
 import { buildReport, type ReportInput } from '../../src/report/html.js'
 import type { DependencyGraph, Finding } from '../../src/types/index.js'
 import { fixture } from '../support/fixtures.js'
@@ -262,6 +263,40 @@ describe('buildReport — suppressed findings', () => {
   it('leaves the section out entirely when nothing is suppressed', async () => {
     const { graph, findings } = await scanned('npm-vulnerable')
     expect(buildReport({ ...BASE, graph, findings })).not.toContain('<h2>Suppressed')
+  })
+})
+
+describe('buildReport — resolution notes', () => {
+  it('shows every shape the parser could not state exactly', async () => {
+    const { graph, findings } = await scanned('npm-edge-cases')
+    const html = buildReport({ ...BASE, graph, findings })
+
+    expect(html).toContain('Resolution notes')
+    // Each note reaches the page, message and hint both. Truncating to a count
+    // would leave the reader knowing something was odd and not what. Compared
+    // through escapeHtml, because that is the one path anything rendered has to
+    // take - an apostrophe arriving unescaped would mean this text bypassed it.
+    for (const note of graph.notes) {
+      expect(html, note.kind).toContain(escapeHtml(note.subject))
+      expect(html, note.kind).toContain(escapeHtml(note.message))
+      expect(html, note.kind).toContain(escapeHtml(note.hint))
+    }
+  })
+
+  it('omits the section entirely for an ordinary project', async () => {
+    // Its presence has to mean something, so an empty heading is worse than none.
+    const { graph, findings } = await scanned('npm-basic')
+    expect(graph.notes).toEqual([])
+    expect(buildReport({ ...BASE, graph, findings })).not.toContain('Resolution notes')
+  })
+
+  it('places the notes ahead of the component table', async () => {
+    // Everything above is a count, and a count cannot say that one of the things
+    // counted is not quite what it looks like.
+    const { graph, findings } = await scanned('npm-edge-cases')
+    const html = buildReport({ ...BASE, graph, findings })
+    // The heading, not the summary card that is also labelled "Components".
+    expect(html.indexOf('Resolution notes')).toBeLessThan(html.indexOf('<h2>Components'))
   })
 })
 

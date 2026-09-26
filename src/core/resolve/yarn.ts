@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
-import type { DependencyGraph, PackageManager } from '../../types/index.js'
+import type { DependencyGraph, PackageManager, ResolveNote } from '../../types/index.js'
 import { CradleError } from '../errors.js'
 import { buildGraph, type RawPackage, type RootManifest } from './graph.js'
 import { hoistedCandidates, readLicensesFromDisk } from './licenses.js'
@@ -17,11 +17,29 @@ export interface YarnEntry {
   version: string
   integrity?: string
   resolvedUrl?: string
+  /** Berry's `resolution:` line verbatim. Classic has no equivalent. */
+  resolution?: string
+  /**
+   * The protocol part of the range this entry was requested under. Berry has it in
+   * `resolution:`; for Classic the descriptor is the only place it appears, and
+   * without it a git or a local dependency is indistinguishable from a registry
+   * one.
+   */
+  requestedRange?: string
+  /** The name it is installed under, when that differs from the published name. */
+  installedAs?: string
   /** Dependency name -> the range it was declared with. */
   dependencies: Map<string, string>
   peers: Set<string>
   workspace?: boolean
 }
+
+/**
+ * Protocols that mean the installed code is not the published package: a local
+ * path, a git checkout, or a patch Yarn applied on the way in.
+ */
+const LOCAL_PROTOCOL = /^(file:|link:|portal:)/
+const GIT_PROTOCOL = /^(git\+|git:|ssh:\/\/|https?:\/\/.*\.git)/
 
 export interface ResolveYarnOptions {
   projectDir: string
@@ -54,10 +72,64 @@ export async function resolveYarn(
     for (const descriptor of entry.descriptors) byDescriptor.set(descriptor, entry)
   }
 
+  const resolve = (name: string, range: string): string | undefined => {
+    const entry = byDescriptor.get(`${name}@${range}`)
+    return entry === undefined ? undefined : `${entry.name}@${entry.version}`
+  }
+
+  const notes: ResolveNote[] = []
   const packages = new Map<string, RawPackage>()
   for (const entry of entries) {
     if (entry.workspace === true) continue
     const key = `${entry.name}@${entry.version}`
+    const subject = `${entry.name}@${entry.version}`
+
+    // A `patch:` entry is Yarn applying a patch to a package that also appears
+    // under its plain resolution. It is deliberately not a second component -
+    // that would double-count - but the code on disk is not the published code,
+    // and that is not something to leave unsaid. The descriptor table still maps
+    // the patch descriptor onto this same key, so an edge declared against the
+    // patch still lands on the right component.
+    if (entry.resolution?.includes('@patch:') === true) {
+      notes.push({
+        kind: 'patched-dependency',
+        subject,
+        message: `${entry.name} has a Yarn patch applied on top of version ${entry.version}.`,
+        hint:
+          'The SBOM lists the unpatched package, because that is what advisories are keyed ' +
+          'on. Whether the patch closes or opens anything is not something cradle can see.',
+      })
+      continue
+    }
+
+    // Berry states the protocol in `resolution:`; Classic only ever shows it in
+    // the descriptor it was requested under.
+    const protocol =
+      entry.resolution === undefined
+        ? (entry.requestedRange ?? '')
+        : splitDescriptor(entry.resolution).range
+
+    if (GIT_PROTOCOL.test(protocol) || protocol.includes('commit=')) {
+      notes.push({
+        kind: 'git-dependency',
+        subject,
+        message: `${entry.name} is installed from git, not from a registry.`,
+        hint:
+          `The version ${entry.version} is what that commit's package.json claims; it is not ` +
+          'a published release, and yarn.lock does not record what the package is published ' +
+          `as — so "${entry.name}" here is the name it was installed under.`,
+      })
+    } else if (LOCAL_PROTOCOL.test(protocol)) {
+      notes.push({
+        kind: 'local-dependency',
+        subject,
+        message: `${entry.name} is installed from a local path, not from a registry.`,
+        hint:
+          'Its purl names a registry package that may not be the same code, and advisory ' +
+          'lookups will match on that name. Vendored code has to be reviewed on its own.',
+      })
+    }
+
     const pkg: RawPackage = {
       key,
       name: entry.name,
@@ -70,9 +142,44 @@ export async function resolveYarn(
     packages.set(key, pkg)
   }
 
-  const resolve = (name: string, range: string): string | undefined => {
-    const entry = byDescriptor.get(`${name}@${range}`)
-    return entry === undefined ? undefined : `${entry.name}@${entry.version}`
+  // An `npm:` alias installs a package under a name it is not published as. The
+  // component carries the published name, because that is what OSV keys on -
+  // which means the name in package.json appears nowhere in the output. Berry
+  // records both names in the lockfile; Classic records only the alias, so there
+  // the manifest range is the only place the pairing exists.
+  for (const entry of entries) {
+    if (entry.workspace === true || entry.installedAs === undefined) continue
+    notes.push({
+      kind: 'aliased-dependency',
+      subject: `${entry.name}@${entry.version}`,
+      message: `${entry.name} is installed under the name ${entry.installedAs}.`,
+      hint:
+        `The SBOM records the published name ${entry.name}, because that is what advisories ` +
+        'are keyed on. Searching it for the alias will find nothing.',
+    })
+  }
+
+  for (const [name, range] of Object.entries({
+    ...manifest.dependencies,
+    ...manifest.devDependencies,
+    ...manifest.optionalDependencies,
+  })) {
+    if (!range.startsWith('npm:')) continue
+    const target = range.slice('npm:'.length)
+    // `npm:@scope/real@^1.0.0` is an alias; a bare `npm:^2.1.3` is only a
+    // protocol-qualified range, and reading a name out of it produced notes about
+    // a package called "^2.1.3".
+    if (target.indexOf('@', 1) === -1) continue
+    const aliased = splitDescriptor(target).name
+    if (aliased === '' || aliased === name) continue
+    notes.push({
+      kind: 'aliased-dependency',
+      subject: resolve(name, range) ?? aliased,
+      message: `${aliased} is installed under the name ${name}.`,
+      hint:
+        `The SBOM records the published name ${aliased}, because that is what advisories are ` +
+        'keyed on. Searching it for the alias will find nothing.',
+    })
   }
 
   for (const entry of entries) {
@@ -89,18 +196,36 @@ export async function resolveYarn(
 
   const rootProd = new Map<string, string>()
   const rootDev = new Map<string, string>()
-  for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
-    const key = resolve(name, range)
-    if (key !== undefined) rootProd.set(name, key)
+  const optionalNames = new Set(Object.keys(manifest.optionalDependencies ?? {}))
+
+  const linkRoot = (
+    ranges: Record<string, string> | undefined,
+    into: Map<string, string>,
+  ): void => {
+    for (const [name, range] of Object.entries(ranges ?? {})) {
+      const key = resolve(name, range)
+      if (key !== undefined && packages.has(key)) {
+        into.set(name, key)
+        continue
+      }
+      // An unmet optional dependency is the normal case; anything else declared
+      // but unresolvable is missing from the SBOM and from the lookup, and used
+      // to vanish without a word.
+      if (optionalNames.has(name)) continue
+      notes.push({
+        kind: 'unresolved-dependency',
+        subject: name,
+        message: `${name} is declared in package.json but absent from yarn.lock.`,
+        hint:
+          'It is missing from the SBOM and from the vulnerability lookup. Run `yarn install` ' +
+          'to write a complete lockfile.',
+      })
+    }
   }
-  for (const [name, range] of Object.entries(manifest.optionalDependencies ?? {})) {
-    const key = resolve(name, range)
-    if (key !== undefined) rootProd.set(name, key)
-  }
-  for (const [name, range] of Object.entries(manifest.devDependencies ?? {})) {
-    const key = resolve(name, range)
-    if (key !== undefined) rootDev.set(name, key)
-  }
+
+  linkRoot(manifest.dependencies, rootProd)
+  linkRoot(manifest.optionalDependencies, rootProd)
+  linkRoot(manifest.devDependencies, rootDev)
 
   const licenses = await readLicensesFromDisk(
     options.projectDir,
@@ -115,8 +240,10 @@ export async function resolveYarn(
     packages,
     rootProd,
     rootDev,
+    rootOptional: optionalNames,
     includeDev: options.includeDev,
     licenses,
+    notes,
   })
 }
 
@@ -191,7 +318,9 @@ export function parseClassicLockfile(raw: string): YarnEntry[] {
   for (const entry of entries) {
     const first = entry.descriptors[0]
     if (first === undefined) continue
-    entry.name = splitDescriptor(first).name
+    const { name, range } = splitDescriptor(first)
+    entry.name = name
+    entry.requestedRange = range
   }
   return entries.filter((entry) => entry.name !== '' && entry.version !== '')
 }
@@ -250,20 +379,49 @@ export function parseBerryLockfile(raw: string, source: string): YarnEntry[] {
     const resolution = typeof value.resolution === 'string' ? value.resolution : ''
     if (version === '') continue
 
-    const descriptors = key
+    // Both spellings are registered. A dependent may declare `ms@^2.1.3` where the
+    // lockfile keys it as `ms@npm:^2.1.3`, and an alias is declared as
+    // `npm:@scope/real@^1.0.0` — whose stripped form is meaningless. Keeping both
+    // means either lookup finds the entry; stripping only lost the alias.
+    const raw = key
       .split(',')
-      .map((part) => stripProtocol(unquote(part.trim())))
+      .map((part) => unquote(part.trim()))
       .filter((part) => part !== '')
+    // Berry appends `::locator=…` to a portal or patch descriptor to record which
+    // workspace asked for it. package.json carries the range without it, so the
+    // bare spelling is registered as well or the dependency never resolves.
+    const withoutLocator = raw.map((part) => part.split('::')[0] ?? part)
+    const descriptors = [
+      ...new Set([
+        ...raw,
+        ...withoutLocator,
+        ...raw.map(stripProtocol),
+        ...withoutLocator.map(stripProtocol),
+      ]),
+    ]
+
+    // The name comes from `resolution`, not from the descriptor. For an alias
+    // those differ: `is-alias@npm:@sindresorhus/is@^7.0.1` resolves to
+    // `@sindresorhus/is@npm:7.2.0`, and taking the descriptor's name produced a
+    // component called `is-alias` with a purl for a package that does not exist.
+    const resolvedName = resolution === '' ? '' : splitDescriptor(resolution).name
+    const declaredName = raw[0] === undefined ? '' : splitDescriptor(raw[0]).name
 
     const entry: YarnEntry = {
       descriptors,
-      name: descriptors[0] === undefined ? '' : splitDescriptor(descriptors[0]).name,
+      name: resolvedName !== '' ? resolvedName : declaredName,
       version,
       dependencies: new Map(),
       peers: new Set(),
     }
-    // `workspace:` resolutions are this repository's own packages.
-    if (resolution.includes('@workspace:') || value.linkType === 'soft') entry.workspace = true
+    if (resolution !== '') entry.resolution = resolution
+    if (declaredName !== '' && declaredName !== entry.name) entry.installedAs = declaredName
+    // Only a `workspace:` resolution is this repository's own package. `linkType:
+    // soft` is not a synonym for it: Berry gives `portal:` and `link:`
+    // dependencies a soft link too, and treating those as workspaces dropped them
+    // from the SBOM entirely while reporting them as missing from a lockfile they
+    // were plainly in.
+    if (resolution.includes('@workspace:')) entry.workspace = true
 
     for (const [name, range] of Object.entries(value.dependencies ?? {})) {
       entry.dependencies.set(name, stripRangeProtocol(range))
@@ -292,9 +450,27 @@ function stripRangeProtocol(range: string): string {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/** Split on the version separator, not on a scope's leading `@`. */
+/**
+ * Split a descriptor into the package name and everything after it.
+ *
+ * The separator is the **first** `@` past position zero, not the last. A scope's
+ * leading `@` sits at position zero, and everything after the separator is the
+ * range — which is entirely free to contain more of them:
+ *
+ *   `lodash@npm:^4.17.21`                        -> lodash
+ *   `@esbuild/aix-ppc64@npm:0.28.2`              -> @esbuild/aix-ppc64
+ *   `myalias@npm:@scope/real@^1.0.0`             -> myalias
+ *   `typescript@patch:typescript@npm%3A5.9.3#…`  -> typescript
+ *   `left-pad@git+ssh://git@github.com/x/y.git`  -> left-pad
+ *
+ * Splitting on the last `@` got the first two right and the last three wrong,
+ * yielding names like `typescript@patch:typescript` — which then produce a purl
+ * for a package that does not exist. Those entries happened to be unreachable in
+ * Yarn's own built-in patches, so the damage stayed invisible; a hand-written
+ * `patch:` or an alias would have surfaced it as a fabricated component.
+ */
 export function splitDescriptor(descriptor: string): { name: string; range: string } {
-  const at = descriptor.lastIndexOf('@')
+  const at = descriptor.indexOf('@', 1)
   if (at <= 0) return { name: descriptor, range: '' }
   return { name: descriptor.slice(0, at), range: descriptor.slice(at + 1) }
 }

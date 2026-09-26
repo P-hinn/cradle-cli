@@ -111,6 +111,7 @@ export async function runScan(
     componentCount: graph.components.length,
     findings,
     suppressed,
+    notes: graph.notes,
   }
 
   await mkdir(outputDir, { recursive: true })
@@ -286,6 +287,22 @@ function summarize(input: SummaryInput): string {
     lines.push(
       `  ${input.unusedStatements} ${label} nothing in this scan — likely fixed by an upgrade.`,
     )
+    lines.push('')
+  }
+
+  // Last, and never omitted: a shape cradle could not represent is the one thing
+  // a reader cannot infer from the numbers above. A silently skipped dependency
+  // leaves an SBOM that still looks complete.
+  if (graph.notes.length > 0) {
+    const label = graph.notes.length === 1 ? 'note' : 'notes'
+    lines.push(`  ${graph.notes.length} resolution ${label}`)
+    for (const note of graph.notes.slice(0, 5)) {
+      lines.push(`    · ${note.message}`)
+      lines.push(`      ${note.hint}`)
+    }
+    if (graph.notes.length > 5) {
+      lines.push(`    +${graph.notes.length - 5} more, all of them in the report.`)
+    }
     lines.push('')
   }
 

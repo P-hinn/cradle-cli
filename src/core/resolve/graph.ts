@@ -4,6 +4,7 @@ import type {
   PackageManager,
   ResolvedComponent,
   ResolvedLicense,
+  ResolveNote,
   RootComponent,
 } from '../../types/index.js'
 import { assignBomRefs } from '../sbom/bomref.js'
@@ -58,9 +59,18 @@ export interface BuildGraphInput {
   rootProd: Map<string, string>
   /** Keys the root's development dependencies resolve to. */
   rootDev: Map<string, string>
+  /**
+   * Names among `rootProd` that were declared as optional. They belong to the
+   * production scope - npm installs them when the platform allows - but calling
+   * them plain production edges loses the one thing that distinguishes them, and
+   * CycloneDX has a `scope: optional` to carry it.
+   */
+  rootOptional?: ReadonlySet<string>
   includeDev: boolean
   /** Licences read from disk, keyed by package key. Empty when none were found. */
   licenses?: ReadonlyMap<string, ResolvedLicense[]>
+  /** Shapes the parser could not represent faithfully; see ResolveNote. */
+  notes?: ResolveNote[]
 }
 
 /**
@@ -113,7 +123,15 @@ export function buildGraph(input: BuildGraphInput): DependencyGraph {
     const ref = target === undefined ? undefined : refFor(target)
     if (ref === undefined) continue
     rootEdges.add(ref)
-    addKind(kinds, key, input.rootProd.has(name) ? 'prod' : 'dev')
+    addKind(
+      kinds,
+      key,
+      input.rootOptional?.has(name) === true
+        ? 'optional'
+        : input.rootProd.has(name)
+          ? 'prod'
+          : 'dev',
+    )
   }
   edges.set(rootRef, [...rootEdges].sort())
 
@@ -179,7 +197,21 @@ export function buildGraph(input: BuildGraphInput): DependencyGraph {
       .filter((component) => component.workspace)
       .map((component) => component.name)
       .sort(),
+    notes: sortNotes(input.notes ?? []),
   }
+}
+
+/**
+ * Deterministic order, and one note per subject and kind. A parser that walks the
+ * same package twice would otherwise report it twice, which reads like two
+ * problems.
+ */
+function sortNotes(notes: readonly ResolveNote[]): ResolveNote[] {
+  const unique = new Map<string, ResolveNote>()
+  for (const note of notes) unique.set(`${note.kind}\u0000${note.subject}`, note)
+  return [...unique.values()].sort(
+    (a, b) => a.kind.localeCompare(b.kind) || a.subject.localeCompare(b.subject),
+  )
 }
 
 function addKind(kinds: Map<string, Set<DependencyKind>>, key: string, kind: DependencyKind): void {

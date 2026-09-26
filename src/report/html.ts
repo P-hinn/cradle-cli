@@ -10,6 +10,8 @@ import type {
   ReadinessStatus,
   ResolvedComponent,
   ResolvedLicense,
+  ResolveNote,
+  ResolveNoteKind,
   Severity,
 } from '../types/index.js'
 import { SEVERITY_ORDER, VEX_JUSTIFICATION_TEXT } from '../types/index.js'
@@ -73,6 +75,7 @@ ${summarySection(input)}
 ${readinessSection(input)}
 ${findingsSection(input)}
 ${suppressedSection(input)}
+${notesSection(graph)}
 ${componentsSection(graph)}
 ${colophon(input)}
 </div>
@@ -464,6 +467,46 @@ function renderExpiry(expires: string | undefined, inDays: number | undefined): 
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Resolution notes
+// ---------------------------------------------------------------------------
+
+const NOTE_LABEL: Record<ResolveNoteKind, string> = {
+  'git-dependency': 'Installed from git',
+  'local-dependency': 'Installed from a local path',
+  'aliased-dependency': 'Installed under another name',
+  'patched-dependency': 'Patched by the package manager',
+  'unresolved-dependency': 'Declared but not in the lockfile',
+  'bundled-dependency': 'Bundled inside its parent',
+}
+
+/**
+ * The caveats. Placed ahead of the component table on purpose: everything above
+ * this point is a count, and a count cannot tell the reader that one of the
+ * things being counted is not quite what it appears to be. Omitted entirely for
+ * an ordinary project, so its presence means something.
+ */
+function notesSection(graph: DependencyGraph): string {
+  if (graph.notes.length === 0) return ''
+
+  return `<h2>Resolution notes <span class="count">${graph.notes.length}</span></h2>
+<p class="section-note">Shapes in the lockfile that an SBOM cannot state exactly. None of these is an error, and none is hidden: a dependency left out in silence would leave the counts above looking complete when they are not.</p>
+<div class="scroll"><table>
+<thead><tr><th>What</th><th>Package</th><th>Detail</th></tr></thead>
+<tbody>
+${graph.notes.map(noteRow).join('\n')}
+</tbody>
+</table></div>`
+}
+
+function noteRow(note: ResolveNote): string {
+  return `<tr>
+<td>${escapeHtml(NOTE_LABEL[note.kind])}</td>
+<td><code>${escapeHtml(note.subject)}</code></td>
+<td>${escapeHtml(note.message)} <span class="section-note">${escapeHtml(note.hint)}</span></td>
+</tr>`
+}
 
 function componentsSection(graph: DependencyGraph): string {
   if (graph.components.length === 0) {

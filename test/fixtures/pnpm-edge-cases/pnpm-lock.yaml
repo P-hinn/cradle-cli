@@ -1,0 +1,45 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      acme-local-lib:
+        specifier: file:./local-lib
+        version: file:local-lib
+      acme-outside:
+        specifier: link:../outside-the-workspace
+        version: link:../outside-the-workspace
+      left-pad:
+        specifier: github:left-pad/left-pad#ff8e7ba8b4122829cf66125ca8445cac7f073bce
+        version: https://codeload.github.com/left-pad/left-pad/tar.gz/ff8e7ba8b4122829cf66125ca8445cac7f073bce
+      missing-from-lockfile:
+        specifier: ^2.0.0
+        version: 2.0.0
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
+
+packages:
+
+  acme-local-lib@file:local-lib:
+    resolution: {directory: local-lib, type: directory}
+
+  left-pad@https://codeload.github.com/left-pad/left-pad/tar.gz/ff8e7ba8b4122829cf66125ca8445cac7f073bce:
+    resolution: {gitHosted: true, integrity: sha512-c8BndKxz1I+ypxTExFFAjWIBSITcsIBUo1h8Xy2FCIn/rRtP1uVtKx0VisrrRriAkiFy9m0jIVC9awCUTtdTHQ==, tarball: https://codeload.github.com/left-pad/left-pad/tar.gz/ff8e7ba8b4122829cf66125ca8445cac7f073bce}
+    version: 1.3.0
+
+  ms@2.1.3:
+    resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
+
+snapshots:
+
+  acme-local-lib@file:local-lib: {}
+
+  left-pad@https://codeload.github.com/left-pad/left-pad/tar.gz/ff8e7ba8b4122829cf66125ca8445cac7f073bce: {}
+
+  ms@2.1.3: {}

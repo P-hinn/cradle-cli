@@ -37,8 +37,48 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   A committed component count catches a parser change that quietly drops a shape
   while satisfying every other invariant.
 
+- **Resolution notes.** A lockfile carries shapes an SBOM cannot state exactly —
+  a package installed under an alias, built from a git commit, vendored from a
+  directory, patched by the package manager, or declared and then absent. cradle
+  now reports each one instead of dropping it: in the console, in `findings.json`
+  so a machine sees the same caveats a human does, and in the report as its own
+  section ahead of the component table. An ordinary project gets no notes at all,
+  so their presence means something. The rule is not "handle everything", it is
+  **never skip anything in silence** — a dropped dependency leaves a component
+  count that still looks complete.
+
 ### Fixed
 
+- **Yarn descriptors were split on the last `@` instead of the first.** A scope's
+  `@` sits at position zero and everything after the separator is a range, free to
+  contain more of them — so `typescript@patch:typescript@npm%3A5.9.3#…` parsed to a
+  package named `typescript@patch:typescript`. Yarn's own built-in patches happened
+  to be unreachable, which kept the damage invisible; a hand-written `patch:` or an
+  alias would have produced a fabricated component.
+- **Yarn Berry took a component's name from the descriptor rather than the
+  resolution.** For an alias those differ: `is-alias@npm:@sindresorhus/is@^7.0.1`
+  resolves to `@sindresorhus/is@npm:7.2.0`, and the descriptor gave a component
+  called `is-alias` with a purl for a package that does not exist. Berry also
+  treated `linkType: soft` as "this is a workspace" — which it also is for
+  `portal:` and `link:`, so those were dropped from the SBOM and then reported as
+  missing from a lockfile they were plainly in. Only an `@workspace:` resolution
+  makes a workspace.
+- **pnpm gave git and `file:` dependencies a location where a version belongs.**
+  A git dependency became `pkg:npm/left-pad@https://codeload.github.com/…` and a
+  directory dependency `pkg:npm/acme-local-lib@file:local-lib`. The real version
+  comes from pnpm's own `version:` field for the former and from the directory's
+  `package.json` for the latter; where neither can be read the component is left
+  out **and reported**, rather than given a made-up identity.
+- **An npm `file:` dependency was listed as a workspace.** Both are materialised
+  outside `node_modules` and their lockfile entries are indistinguishable; only
+  the declared range separates them. The effect was somebody else's vendored code
+  appearing in the workspace list as one of the product's own packages.
+- **Yarn Classic never detected a git or `file:` dependency at all**, because only
+  Berry's `resolution` field was read. Classic has no such field; the descriptor's
+  range is the only place a protocol appears.
+- **A root optional dependency was labelled `prod`.** The `optional` kind applied
+  only to a package's own edges, never to the root's, and CycloneDX has a
+  `scope: optional` that was going unused.
 - **pnpm monorepos were flattened and their members left unreachable.** Every
   workspace member's dependencies were attached to the root rather than to the
   member, so the route read `root › fastify` instead of `@acme/api › fastify` —
