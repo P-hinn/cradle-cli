@@ -47,6 +47,30 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   **never skip anything in silence** — a dropped dependency leaves a component
   count that still looks complete.
 
+- **`.cradle/vex.json` is validated against the official OpenVEX JSON Schema**,
+  vendored under `schema/` alongside the CycloneDX ones. Every justification the
+  standard defines, multi-statement documents and the bytes `serializeDocument`
+  actually writes are all covered.
+- **A fuzz fixture for the report** — 30 payloads and 9 hostile URLs driven through
+  every text-bearing field at once: script and attribute breakouts, unclosed tags,
+  comment and style breakouts, `javascript:`/`data:`/`vbscript:` schemes, and the
+  Unicode cases an angle-bracket escaper misses (U+2028/U+2029 line separators,
+  bidirectional overrides, zero-width characters, fullwidth homoglyphs, an
+  ideographic space, a BOM, astral-plane characters). Each payload is named, so a
+  failure says which technique got through. Nothing executable survives, nothing
+  is silently dropped, and the embedded JSON stays parseable.
+
+### Changed
+
+- **The documentation overstated OpenVEX conformance, and now says what is true.**
+  `cradle:expires` was described as something "conforming tools ignore". They do
+  not: OpenVEX has no extension point, its schema sets `additionalProperties:
+  false` on a statement, and a strict validator therefore rejects the whole
+  document rather than the unknown key. Remove that one key and the file validates
+  exactly — a test pins both halves. The prefix makes the extension recognisable,
+  not tolerated, and dropping `--expires` is the way to get a strictly conforming
+  file.
+
 ### Fixed
 
 - **Yarn descriptors were split on the last `@` instead of the first.** A scope's

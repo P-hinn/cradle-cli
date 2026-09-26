@@ -325,9 +325,11 @@ export interface VexStatement {
   action_statement_timestamp?: string
   status_notes?: string
   /**
-   * NOT part of OpenVEX — the specification has no notion of expiry. Namespaced
-   * so it reads as an extension and so conforming consumers ignore it. See
-   * SPEC.md §6.3.
+   * NOT part of OpenVEX — the specification has no notion of expiry, and no
+   * extension point either: its JSON Schema sets `additionalProperties: false` on
+   * a statement, so a strict validator rejects the whole document rather than
+   * ignoring this key. The prefix makes the extension recognisable, not tolerated.
+   * See SPEC.md §6.3 and §16.
    */
   'cradle:expires'?: string
 }

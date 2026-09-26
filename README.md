@@ -221,9 +221,17 @@ Suppressed findings stay in the report, in their own section, with the reason.
 Hiding them would defeat the point.
 
 `--expires` is a cradle extension — OpenVEX has no notion of expiry, so it is
-written as `cradle:expires` and conforming tools ignore it. When it lapses the
-finding comes back, carrying the note that its ruling expired. A decision about a
-dependency should have to be renewed, not quietly outlive its reasoning.
+written as `cradle:expires`. When it lapses the finding comes back, carrying the
+note that its ruling expired. A decision about a dependency should have to be
+renewed, not quietly outlive its reasoning.
+
+> **Know what that costs.** OpenVEX has no extension point: its
+> [JSON Schema][openvex-schema] sets `additionalProperties: false` on a statement.
+> So a strict validator does not *ignore* `cradle:expires` — it rejects the whole
+> document. Remove that one key and the file validates exactly, and a test pins
+> both halves of that. If you need a file that passes validation as-is, leave
+> `--expires` off; the trade is an expiry date against strict conformance, and it
+> is yours to make, not ours.
 
 ---
 
@@ -412,6 +420,7 @@ hard part.
 
 [cra]: https://eur-lex.europa.eu/eli/reg/2024/2847/oj/eng
 [openvex]: https://github.com/openvex/spec
+[openvex-schema]: https://github.com/openvex/spec/blob/main/openvex_json_schema.json
 [syft]: https://github.com/anchore/syft
 [grype]: https://github.com/anchore/grype
 [trivy]: https://github.com/aquasecurity/trivy

@@ -387,8 +387,13 @@ wieder auftaucht.
 
 **Abweichung vom Standard:** OpenVEX kennt kein Ablaufdatum. Deshalb steht es als
 `cradle:expires` am Statement — mit Präfix, damit es erkennbar keine
-OpenVEX-Eigenschaft ist und konforme Konsumenten es ignorieren. Alles andere in
-`vex.json` ist reines OpenVEX v0.2.0.
+OpenVEX-Eigenschaft ist. Alles andere in `vex.json` ist reines OpenVEX v0.2.0.
+
+**Korrektur (siehe §16):** Die frühere Formulierung „konforme Konsumenten
+ignorieren es" war zu stark. OpenVEX hat keinen Erweiterungspunkt — das offizielle
+JSON-Schema setzt `additionalProperties: false` am Statement. Ein streng
+validierender Konsument **verwirft das ganze Dokument**, nicht nur den unbekannten
+Schlüssel. Das Präfix macht die Erweiterung erkennbar, nicht toleriert.
 
 Weitere umgesetzte Details:
 
