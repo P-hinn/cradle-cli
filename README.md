@@ -36,6 +36,9 @@ Three files land in `.cradle/`:
 | **`sbom.cdx.json`** | CycloneDX 1.6, with real dependency edges rather than a flat list |
 | **`findings.json`** | Known vulnerabilities, each with the route from your product to it |
 
+Three more appear when you ask for them: `sbom.spdx.json`, `vex.csaf.json`, and
+`vex.json` once you suppress something.
+
 No configuration, no account, no sign-up. The only network call is the
 vulnerability lookup, and `--offline` removes that one too.
 
@@ -94,6 +97,8 @@ decision down somewhere an auditor can read it.
 | 🗂️ **VEX that survives review** | An OpenVEX statement with one of the five standard justifications, attributed and dated, in a file you commit. |
 | 📉 **A baseline, so the gate is adoptable** | Every real project has a backlog. `cradle check` reports what is *new*. |
 | ✅ **A CRA readiness checklist** | The documentation and process questions, not just the packages. Where cradle cannot tell, it says so rather than guessing. |
+| 🎯 **Triage by exploitation, not only severity** | EPSS and the CISA KEV catalogue. A medium somebody is actually exploiting outranks a critical nobody has touched — `check --sort exploit` says so. |
+| 🇩🇪 **Built for the German and EU case** | A BSI TR-03183-2 profile, CSAF, Article 14 drafts and a German report. [See below.](#for-german-and-eu-teams) |
 | 🪶 **Four runtime dependencies** | Six including transitives. For a tool about the size of dependency trees, that felt like the minimum standard of care. |
 
 ### What it does not do
@@ -101,12 +106,20 @@ decision down somewhere an auditor can read it.
 Deliberately, so you know it is a decision and not a gap:
 
 - Any ecosystem other than npm — no Python, no Go, no container images
-- SPDX output. CycloneDX 1.6 and 1.7 only, for now
-- Signed attestations, Sigstore, SLSA
+- Signed attestations, Sigstore, SLSA. The npm publish carries a provenance
+  attestation; cradle signs nothing of yours
 - A web interface or a hosted service
 - Automatic update pull requests — Dependabot and Renovate do that better
 - Licence policy enforcement. Licences are shown, never blocked on
+- Deciding whether a vulnerability is being **actively exploited**, or whether you
+  owe anyone a report. cradle shows the signals and drafts the paperwork; the
+  determination is yours
 - **Telemetry.** Not now, not later
+
+SPDX **used to be on this list** and no longer is: `--sbom-format spdx` writes
+SPDX 2.3 JSON from the same graph. It is a second rendering, not a second
+opinion — a test counts the dependency edges in both documents and requires them
+to match.
 
 ---
 
@@ -302,17 +315,147 @@ SBOM generation is table stakes. The difference is everything after it.
 
 ---
 
+## For German and EU teams
+
+The rest of this README applies everywhere. This part is for the case cradle was
+built around: a manufacturer placing a product on the EU market, being asked for
+evidence in a particular shape.
+
+### The BSI SBOM guideline, checked field by field
+
+```bash
+npx cradle-cli check --profile bsi-tr-03183
+```
+
+Eighteen data fields from [BSI TR-03183-2][bsi] **version 2.1.0** (20 August
+2025), each citing the section it comes from and the place the guideline's own
+mapping table puts it in CycloneDX 1.6. It appears as its own report section, and
+in `--format github` and `--format markdown`.
+
+It **never changes the exit code.** Several fields the guideline requires are
+statements about your delivery — whether the artefact you ship is executable, an
+archive, a structured file — and an npm package is fetched as a `.tgz` and
+installed as a directory, so which of those you ship is not in your lockfile.
+Those come back `not assessable` with the reason. A build that is permanently red
+gets switched off, and a checklist nobody can satisfy is worth nothing.
+
+The only verdict it will give is **"no required field is open"**. Not
+"compliant" — that word appears nowhere in the profile, and a test keeps it that
+way.
+
+### CSAF, SPDX and a German report
+
+```bash
+npx cradle-cli scan --vex-format both --sbom-format both --lang de
+```
+
+| Flag | What you get |
+| :-- | :-- |
+| `--vex-format csaf` | `vex.csaf.json` — CSAF 2.0 in the VEX profile, from the same suppressions as `vex.json`. CSAF's `flags[].label` enumerates exactly the five OpenVEX justifications, so nothing is lost in translation |
+| `--sbom-format spdx` | `sbom.spdx.json` — SPDX 2.3, same graph, same timestamp, the CycloneDX serial number in its namespace |
+| `--lang de` | The report and the pull-request comment in German, with `lang="de"` set. The terminology follows the German text of the regulation: *Schwachstelle*, *Komponente*, *Begründung*, *Unterstützungszeitraum* |
+
+Both exports validate against their official schemas. A file that claims a format
+and does not meet it is worse than no file.
+
+### Article 14 reporting drafts
+
+From **11 September 2026**, Article 14 is three obligations with three clocks.
+
+```bash
+npx cradle-cli notify GHSA-xvch-5gv4-984h --stage early-warning
+```
+
+| Stage | Deadline | From |
+| :-- | :-- | :-- |
+| `early-warning` | 24 hours | becoming aware |
+| `notification` | 72 hours | becoming aware |
+| `final` | 14 days | **a corrective or mitigating measure becoming available** — not from becoming aware |
+
+Each draft carries the content its paragraph asks for, filled in from the scan:
+the component, its version, the route through your tree, the advisory and its
+aliases, the fix where there is one. Everything a lockfile cannot answer — the
+Member States the product is placed on, any malicious actors, the version of
+*your* product that carries the fix — is a visible `[TO BE COMPLETED]`
+placeholder, and the console counts them.
+
+> **cradle does not decide that you owe a report, and it never submits one.**
+> Article 14 is about *actively exploited* vulnerabilities. cradle knows an
+> advisory exists and that your lockfile resolves the affected version. Whether
+> anyone is exploiting it is not something a dependency scanner can know. The
+> determination is yours; this writes a file.
+
+### Triage by exploitation
+
+```bash
+npx cradle-cli check --sort exploit
+```
+
+[EPSS][epss] estimates the probability of exploitation in the next 30 days. The
+[CISA KEV][kev] catalogue is evidence that it is already happening. Both appear
+as a column in the report and a line in `check`, and this ordering puts
+known-exploited first — a medium CISA has evidence about ahead of a critical
+nobody has touched, which is the opposite of what sorting by severity says.
+
+**`--fail-on` stays CVSS-based.** A gate whose threshold moves daily with
+somebody else's model goes red overnight for reasons nobody on your team changed.
+These order the work; the threshold decides what blocks. `--no-priority` turns
+them off without going fully offline, and only CVE identifiers are ever sent —
+no package name, no version, nothing about your project.
+
+---
+
 ## Commands
 
 ```
-cradle scan      [path] [--include-dev] [--offline] [--spec-version 1.6|1.7]
+cradle scan      [path] [--include-dev] [--offline] [--no-cache] [--no-priority]
+                        [--spec-version 1.6|1.7] [--sbom-format cyclonedx|spdx|both]
+                        [--vex-format openvex|csaf|both] [--lang en|de]
+                        [--workspace <name|all>] [--profile bsi-tr-03183]
+                        [--timestamp <iso>] [--serial-number <urn>]
+                        [--output-dir <dir>]
 cradle check     [path] [--fail-on <severity>] [--baseline] [--no-baseline]
-                        [--format text|github|markdown]
+                        [--format text|github|markdown|sarif] [--sort severity|exploit]
+                        [--workspace <name>] [--profile bsi-tr-03183] [--lang en|de]
+                        [--artifact-name <name>] [--no-priority] [--output-dir <dir>]
 cradle suppress  <advisory-id> [path] --justification <category>
                         [--component <purl>] [--note "…"] [--expires <date>]
+cradle notify    <advisory-id> [path] --stage early-warning|notification|final
+                        [--output <file>]
 ```
 
 `cradle <command> --help` prints the rest.
+
+### Monorepos
+
+```bash
+npx cradle-cli scan --workspace all
+```
+
+One report per package, written into that package's own directory, with the
+package as the product and only its own dependencies in it. The route starts
+where a team can act on it: `@acme/api › fastify › find-my-way` rather than
+`acme-monorepo › @acme/api › fastify › find-my-way`.
+
+The per-package graph is **sliced out of the repository-wide one**, never
+resolved separately — a monorepo has one lockfile and therefore one resolution,
+and two reports about the same code that disagree are worse than one.
+
+`cradle check --workspace <name>` gates a single package, with its baseline in
+that package's directory, so a sibling's backlog no longer reddens your gate.
+`check --workspace all` is deliberately refused: a gate has one exit code and one
+pull-request comment, and neither can honestly speak for several packages.
+
+### Reproducible output
+
+```bash
+npx cradle-cli scan --timestamp 2026-09-26T12:00:00Z --serial-number urn:uuid:…
+```
+
+Two runs over the same lockfile with the same values produce byte-identical
+`sbom.cdx.json`, `findings.json` and `report.html`. The defaults stay as they
+are — a report should say when it was made, and a fresh serial number is what
+lets a reader tell two BOMs apart.
 
 ## Using it as a library
 
@@ -383,6 +526,13 @@ The attestation is why publishing happens in CI rather than from a laptop: it is
 cryptographic proof that a given tarball was built from a given commit by a given
 workflow. Publishing by hand produces a package that is fine and proves nothing.
 
+**A published version is final; tags do not move.** A re-run skips the publish
+when the version is already on the registry, and compares npm's recorded
+`gitHead` against the commit being built — if they differ it stops rather than
+attaching an SBOM and a report describing one commit to a tarball built from
+another. For a tool whose subject is supply-chain evidence, that is the worst
+available outcome, because it looks green.
+
 **One-time setup** on npmjs.com, under the package's *Settings → Trusted
 Publisher*: GitHub Actions, repository `P-hinn/cradle-cli`, workflow
 `release.yml`. That removes the need for a token entirely — worth doing before
@@ -435,6 +585,9 @@ hard part.
 [trivy]: https://github.com/aquasecurity/trivy
 [cdxgen]: https://github.com/CycloneDX/cdxgen
 [cdxnpm]: https://github.com/CycloneDX/cyclonedx-node-npm
+[bsi]: https://bsi.bund.de/dok/TR-03183-en
+[epss]: https://www.first.org/epss/
+[kev]: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
 [purl]: https://github.com/package-url/packageurl-js
 [semver]: https://github.com/npm/node-semver
 [spdx]: https://github.com/jslicense/spdx-expression-parse.js
