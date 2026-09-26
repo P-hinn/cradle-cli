@@ -1,0 +1,101 @@
+name: Bug report
+description: cradle did something wrong, crashed, or produced output you can show is incorrect.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        If cradle reported a vulnerability that does not apply to your project,
+        use the **False positive finding** template instead - it asks for
+        different things.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >-
+        What you ran, what you expected, and what you got instead. Paste the
+        console output; it carries the version, the package manager and the
+        scope on its first line.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package-manager
+    attributes:
+      label: Package manager
+      options:
+        - npm
+        - pnpm
+        - Yarn Classic (v1)
+        - Yarn Berry (v2+)
+        - Bun
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: lockfile-version
+    attributes:
+      label: Lockfile version
+      description: >-
+        `lockfileVersion` from package-lock.json, the `lockfileVersion:` line of
+        pnpm-lock.yaml, or the `__metadata.version` of a Yarn Berry lockfile.
+        Yarn Classic has no version field - write "classic".
+      placeholder: '3'
+    validations:
+      required: true
+
+  - type: input
+    id: cradle-version
+    attributes:
+      label: cradle version
+      description: Output of `npx cradle-cli --version`.
+      placeholder: 0.1.3
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      description: Output of `node --version`. cradle requires 22.9 or newer.
+      placeholder: v22.9.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducer
+    attributes:
+      label: A project that reproduces it
+      description: >-
+        By far the most useful thing you can include. A `package.json` and a
+        lockfile are enough - cradle never needs `node_modules`. Trim it to the
+        few packages that still show the problem if you can; a link to a
+        repository is fine too.
+      render: json
+
+  - type: checkboxes
+    id: offline
+    attributes:
+      label: Does it also happen with --offline?
+      description: >-
+        This separates a parsing or reporting bug from something about the
+        advisory lookup, and it is one command.
+      options:
+        - label: Yes, `--offline` reproduces it too
+        - label: 'No, only without `--offline`'
+        - label: I have not tried

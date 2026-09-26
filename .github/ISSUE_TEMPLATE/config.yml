@@ -1,0 +1,16 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability in cradle itself
+    url: https://github.com/P-hinn/cradle-cli/security/advisories/new
+    about: >-
+      Report privately, never in a public issue. See SECURITY.md for what is in
+      scope. A finding that a dependency of a scanned project is vulnerable is
+      not a vulnerability in cradle - that is the tool working.
+
+  - name: Question about the CRA itself
+    url: https://eur-lex.europa.eu/eli/reg/2024/2847/oj/eng
+    about: >-
+      cradle is a technical aid, not legal advice and not a conformity
+      assessment. Questions about what the regulation requires of your product
+      belong with the text and with your own counsel, not here.

@@ -1,0 +1,119 @@
+name: False positive finding
+description: cradle reported a vulnerability that does not apply, or got its severity or fix version wrong.
+labels: [false-positive]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Two things worth separating before you file, because they land in
+        different places.
+
+
+        **If the advisory itself is wrong** - wrong affected range, wrong
+        severity, withdrawn - that belongs upstream at
+        [OSV](https://github.com/google/osv.dev) or with the advisory database
+        that issued it. cradle passes those ranges through and does not
+        second-guess them.
+
+
+        **If the advisory is right but does not apply to your project** - the
+        vulnerable code never runs, the component is not in what you ship - that
+        is not a bug. That is what
+        [`cradle suppress`](https://github.com/P-hinn/cradle-cli#suppressing-a-finding-you-have-actually-looked-at)
+        is for, and the resulting OpenVEX statement is the artefact an auditor
+        wants to see.
+
+
+        **What belongs here** is cradle getting the mechanics wrong: matching an
+        advisory to a version outside its range, computing a CVSS score that
+        disagrees with the vector, naming a fix version that does not fix it, or
+        drawing a dependency path that is not in your tree.
+
+  - type: input
+    id: advisory-id
+    attributes:
+      label: Advisory ID
+      description: >-
+        The GHSA or CVE identifier as it appears in the report. Both if you have
+        both - cradle keys on GHSA for npm and records the CVE as an alias.
+      placeholder: GHSA-xvch-5gv4-984h / CVE-2021-44906
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Component and version
+      description: The package cradle flagged, as a purl if you have it to hand.
+      placeholder: pkg:npm/minimist@1.2.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package-manager
+    attributes:
+      label: Package manager
+      options:
+        - npm
+        - pnpm
+        - Yarn Classic (v1)
+        - Yarn Berry (v2+)
+    validations:
+      required: true
+
+  - type: input
+    id: lockfile-version
+    attributes:
+      label: Lockfile version
+      description: >-
+        `lockfileVersion` from package-lock.json, the `lockfileVersion:` line of
+        pnpm-lock.yaml, or `__metadata.version` for Yarn Berry. Yarn Classic has
+        no version field - write "classic".
+      placeholder: '3'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: what-is-wrong
+    attributes:
+      label: What is wrong about it
+      options:
+        - The installed version is outside the advisory's affected range
+        - The severity disagrees with the CVSS vector in the advisory
+        - The suggested fix version does not resolve it
+        - The dependency path shown is not in my tree
+        - The component is not in the lockfile at all
+        - The advisory is withdrawn and should have been dropped
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What you expected, and what cradle said
+      description: >-
+        The finding as it appears in `.cradle/findings.json` is the most precise
+        form - it carries the severity, its source, the resolved version and the
+        path. Alongside it, what you believe the correct answer is.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: lockfile-excerpt
+    attributes:
+      label: The lockfile entry for that component
+      description: >-
+        The few lines for this package. This is usually where the answer is: an
+        alias, a `git+` URL or a nested duplicate resolves to a different version
+        than the one you expect.
+      render: json
+
+  - type: input
+    id: cradle-version
+    attributes:
+      label: cradle version
+      placeholder: 0.1.3
+    validations:
+      required: true

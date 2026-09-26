@@ -1,0 +1,80 @@
+name: Feature request
+description: Something cradle should do and does not.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Some things are settled decisions rather than gaps, and they are listed
+        in the README under **What it does not do**: ecosystems other than npm,
+        signed attestations and Sigstore, a hosted service or web interface,
+        automatic update pull requests, licence policy enforcement - and
+        **telemetry**, which is a permanent no rather than a backlog item.
+
+
+        Arguing one of those is legitimate, and the argument has to be about the
+        trade-off behind it. [`SPEC.md`](https://github.com/P-hinn/cradle-cli/blob/main/SPEC.md)
+        records why each was decided that way. It is in German; the README is
+        authoritative for users.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What you are trying to do, and where cradle leaves you stranded. Describe
+        the situation rather than the feature - the best version of a feature
+        request is often a different feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you have in mind
+      description: >-
+        A command, a flag, a section in the report. If it changes output, sketch
+        what the output should look like.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of cradle
+      options:
+        - Lockfile parsing / dependency graph
+        - SBOM output
+        - Vulnerability lookup and severity
+        - VEX and suppression
+        - The HTML report
+        - cradle check / the CI gate
+        - The CRA readiness checklist
+        - CRA reporting templates (Article 14)
+        - The GitHub Action
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: >-
+        Another tool that does this well is useful information, not a
+        disqualification - for several things the honest answer is "use that one
+        instead", and the README says so.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints this would have to respect
+      description: >-
+        Not a quiz - these are the rules that decide whether a feature can exist
+        here at all, and ticking the ones you have thought about saves a round
+        trip.
+      options:
+        - label: It works without network access, or degrades honestly under `--offline`
+        - label: It needs no new runtime dependency, or the dependency is worth justifying
+        - label: It does not require an account, a server or any data leaving the machine
+        - label: Where cradle cannot know something, it can still say "not assessable" rather than guess
