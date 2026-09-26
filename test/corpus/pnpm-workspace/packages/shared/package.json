@@ -1,0 +1,7 @@
+{
+  "name": "@corpus/shared",
+  "version": "1.0.0",
+  "dependencies": {
+    "zod": "^3.24.3"
+  }
+}

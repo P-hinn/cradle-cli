@@ -82,18 +82,66 @@ export async function resolvePnpm(options: ResolvePnpmOptions): Promise<Dependen
     }
   }
 
+  // Workspace packages are read first, so that a `link:` dependency has
+  // something to resolve to when the importers are walked below.
+  const workspacesByPath = new Map<string, RawPackage>()
+  for (const importerPath of Object.keys(lock.importers ?? {})) {
+    if (importerPath === '.') continue
+    const workspace = await readWorkspacePackage(options.projectDir, importerPath)
+    if (workspace === undefined) continue
+    packages.set(workspace.key, workspace)
+    workspacesByPath.set(normalizeImporterPath(importerPath), workspace)
+  }
+
   const rootProd = new Map<string, string>()
   const rootDev = new Map<string, string>()
-  for (const [path, importer] of Object.entries(lock.importers ?? {})) {
-    // Every importer is part of this product, so its production dependencies are
-    // the product's too. The root is simply the importer at ".".
-    collect(importer.dependencies, rootProd)
-    collect(importer.optionalDependencies, rootProd)
-    collect(importer.devDependencies, rootDev)
 
-    if (path === '.') continue
-    const workspace = await readWorkspacePackage(options.projectDir, path)
-    if (workspace !== undefined) packages.set(workspace.key, workspace)
+  for (const [importerPath, importer] of Object.entries(lock.importers ?? {})) {
+    const workspace =
+      importerPath === '.' ? undefined : workspacesByPath.get(normalizeImporterPath(importerPath))
+
+    const collect = (
+      entries: Record<string, ImporterEntry> | undefined,
+      into: Map<string, string>,
+      optional: boolean,
+    ): void => {
+      for (const [name, entry] of Object.entries(entries ?? {})) {
+        if (typeof entry.version !== 'string') continue
+        const key = resolveImporterDependency(
+          importerPath,
+          name,
+          entry.version,
+          workspacesByPath,
+          normalizeImporterPath,
+        )
+        if (key === undefined) continue
+        into.set(name, key)
+        if (optional && workspace !== undefined) {
+          workspace.optional = (workspace.optional ?? new Set()).add(name)
+        }
+      }
+    }
+
+    if (workspace === undefined) {
+      collect(importer.dependencies, rootProd, false)
+      collect(importer.optionalDependencies, rootProd, true)
+      collect(importer.devDependencies, rootDev, false)
+      continue
+    }
+
+    // A workspace member's dependencies hang off that member, not off the root.
+    // `@acme/api › fastify` is the route; flattening it to `root › fastify` loses
+    // exactly what a route is for, and left the member itself with no incoming
+    // edge at all — a component nothing points at, which is the broken
+    // dependencies block SPEC.md §5c is about.
+    //
+    // Dev dependencies are linked the same way the npm resolver links a
+    // workspace's own dev dependencies, so that the parsers agree on what a
+    // production scope contains (SPEC.md §6.1).
+    collect(importer.dependencies, workspace.dependencies, false)
+    collect(importer.optionalDependencies, workspace.dependencies, true)
+    collect(importer.devDependencies, workspace.dependencies, false)
+    rootProd.set(workspace.name, workspace.key)
   }
 
   const licenses = await readLicensesFromDisk(options.projectDir, packages.values(), pnpmCandidates)
@@ -110,17 +158,51 @@ export async function resolvePnpm(options: ResolvePnpmOptions): Promise<Dependen
   })
 }
 
-function collect(
-  entries: Record<string, ImporterEntry> | undefined,
-  into: Map<string, string>,
-): void {
-  for (const [name, entry] of Object.entries(entries ?? {})) {
-    const version = entry.version
-    // `link:../other` points at a workspace sibling rather than a registry
-    // package; those have no entry under `packages`.
-    if (typeof version !== 'string' || version.startsWith('link:')) continue
-    into.set(name, `${name}@${basePackageKey(version)}`)
+/**
+ * Turn what an importer asked for into the key of the package it got.
+ *
+ * Most of the time that is `name@version`. The interesting case is
+ * `link:../shared`, which is how pnpm records a `workspace:*` range: a path
+ * relative to the importer's own directory, pointing at a sibling workspace.
+ * Those have no entry under `packages` — they are the repository's own code —
+ * so they resolve through the importer table instead.
+ */
+function resolveImporterDependency(
+  importerPath: string,
+  name: string,
+  version: string,
+  workspacesByPath: ReadonlyMap<string, RawPackage>,
+  normalize: (path: string) => string,
+): string | undefined {
+  if (!version.startsWith('link:')) return `${name}@${basePackageKey(version)}`
+
+  const base = importerPath === '.' ? '' : importerPath
+  const target = normalize(posixJoin(base, version.slice('link:'.length)))
+  return workspacesByPath.get(target)?.key
+}
+
+/**
+ * pnpm writes importer paths and `link:` targets with forward slashes regardless
+ * of platform, so they are joined as posix paths rather than with node:path —
+ * which on Windows would produce a backslash that never matches an importer key.
+ */
+function posixJoin(base: string, relative: string): string {
+  return base === '' ? relative : `${base}/${relative}`
+}
+
+/** Collapse `./a/../b` and trailing slashes so two spellings of one path match. */
+function normalizeImporterPath(path: string): string {
+  const parts: string[] = []
+  for (const part of path.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') {
+      if (parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop()
+      else parts.push('..')
+      continue
+    }
+    parts.push(part)
   }
+  return parts.length === 0 ? '.' : parts.join('/')
 }
 
 /**

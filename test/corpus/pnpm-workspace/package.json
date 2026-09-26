@@ -1,0 +1,9 @@
+{
+  "name": "corpus-pnpm-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

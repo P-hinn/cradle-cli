@@ -26,8 +26,29 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   asking for the package manager, lockfile version and advisory ID, without
   which a false positive cannot be reproduced — and a pull-request template.
 
+- **A lockfile corpus** under `test/corpus/`: real lockfiles at real size from a
+  Next.js app, a Nuxt app, an Angular CLI app, a four-package pnpm workspace and
+  a Yarn Berry project — between 184 and 1088 components each. Every entry is
+  held to the same invariants, so adding one costs a table row: the scan
+  completes, the component count equals an **independent count of the lockfile**
+  derived from that format's own rules, every component has a purl, every
+  dependency edge points at a `bom-ref` that exists, every component is reachable
+  from the root, and the SBOM validates against both vendored CycloneDX schemas.
+  A committed component count catches a parser change that quietly drops a shape
+  while satisfying every other invariant.
+
 ### Fixed
 
+- **pnpm monorepos were flattened and their members left unreachable.** Every
+  workspace member's dependencies were attached to the root rather than to the
+  member, so the route read `root › fastify` instead of `@acme/api › fastify` —
+  and the members themselves had no incoming edge at all, which is the broken
+  `dependencies` block SPEC.md §5c exists to prevent. `link:` edges, which is how
+  pnpm records a `workspace:*` range, were dropped entirely: the most interesting
+  edge in a monorepo is one of your own packages depending on another, and it was
+  missing. The npm resolver already did this correctly; pnpm now matches it, and a
+  test pins the two together because the parsers are required to agree. The corpus
+  found this.
 - **The release workflow could attach evidence from the wrong commit.** With
   `0.1.3` the publish succeeded and the run then failed uploading the second
   SBOM: release assets are keyed by filename, both SBOMs are written as
