@@ -259,6 +259,21 @@ export interface Finding {
   suppressed?: boolean
   /** Present whenever a statement matched, including an expired one. */
   suppression?: Suppression
+  /**
+   * Whether anyone appears to be exploiting this, as distinct from how bad it
+   * would be. Absent under `--offline`, and absent for a finding with no CVE
+   * alias — both sources are keyed on CVE. See core/vulns/priority.ts.
+   */
+  exploit?: {
+    /** EPSS: probability of exploitation in the next 30 days, 0..1. */
+    epss?: number
+    epssPercentile?: number
+    /** The model run this came from, so a stale number is visibly stale. */
+    epssDate?: string
+    /** On CISA's Known Exploited Vulnerabilities catalogue. */
+    knownExploited?: boolean
+    knownExploitedSince?: string
+  }
 }
 
 export interface FindingsDocument {

@@ -99,6 +99,15 @@ export const de: Strings = {
       `${severity} — wie von der Advisory-Datenbank bewertet. Es wurde kein CVSS-Vektor veröffentlicht, den dieses Werkzeug berechnen kann.`,
     severityUnknown:
       'unbekannt — das Advisory enthält weder einen berechenbaren CVSS-Vektor noch eine Schwere-Einstufung.',
+    exploited: 'Ausnutzung',
+    knownExploited: 'in CISA KEV',
+    knownExploitedSince: (date) => `in CISA KEV seit ${date}`,
+    epss: (percent, percentile) => `EPSS ${percent}, ${percentile}. Perzentil`,
+    noExploitData: 'keine Daten',
+    exploitCaption:
+      'Ob die Schwachstelle offenbar ausgenutzt wird — eine andere Frage als die, wie schwer sie wäre. CISA KEV ist ein Nachweis tatsächlicher Ausnutzung; EPSS ist eine tägliche Schätzung der Wahrscheinlichkeit für die nächsten 30 Tage. Beide sind über die CVE geschlüsselt, ein Advisory ohne CVE zeigt daher „keine Daten“ — was nicht dasselbe ist wie kein Risiko.',
+    exploitUnavailable: (sources) =>
+      `Diese Spalte ist unvollständig: ${sources} war während des Scans nicht erreichbar.`,
   },
 
   readiness: {

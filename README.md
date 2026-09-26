@@ -352,7 +352,10 @@ npx cradle-cli scan && open .cradle/report.html
 ## What cradle does on your machine
 
 Reads your lockfile and `node_modules` manifests, writes to `.cradle/`, and talks
-to `api.osv.dev` and `registry.npmjs.org` — both skipped by `--offline`. It runs
+to `api.osv.dev`, `registry.npmjs.org`, `api.first.org` (EPSS) and `www.cisa.gov`
+(the Known Exploited Vulnerabilities catalogue) — all skipped by `--offline`, and
+the last two by `--no-priority`. The two exploitation sources receive **only CVE
+identifiers**: no package name, no version, nothing about your project. It runs
 `git config --get user.email` once, in `cradle suppress`, to know who is
 recording a decision; `--author` avoids even that. No telemetry.
 [`SECURITY.md`](SECURITY.md) has the full table.

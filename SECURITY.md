@@ -40,7 +40,7 @@ you go and read the source:
 | :-- | :-- | :-- |
 | **Reads files** | the lockfile, `package.json`, `node_modules/*/package.json`, `.cradle/` | Resolving the tree, and reading licences for pnpm and Yarn, whose lockfiles do not carry them. Paths are contained to the project directory. |
 | **Writes files** | `.cradle/` and the advisory cache | The SBOM, findings, report and VEX statements. Nothing outside those. |
-| **Network** | `api.osv.dev`, `registry.npmjs.org` | Advisory lookup, and release dates and deprecation notices for the readiness check. Both are skipped entirely with `--offline`. |
+| **Network** | `api.osv.dev`, `registry.npmjs.org`, `api.first.org`, `www.cisa.gov` | Advisory lookup; release dates and deprecation notices for the readiness check; EPSS scores and the CISA Known Exploited Vulnerabilities catalogue, which order the findings for triage. All four are skipped entirely with `--offline`, and the last two with `--no-priority`. Only CVE identifiers are sent — never a package name, never a version, never anything about your project. |
 | **Spawns a process** | `git config --get user.email`, once, in `cradle suppress` | OpenVEX requires an author, and this is the least intrusive way to know who is recording the decision. Fixed arguments, no shell, output ignored on failure. Pass `--author` and it is never called. |
 
 There is no telemetry, no analytics and no phone-home of any kind.

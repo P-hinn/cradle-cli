@@ -12,6 +12,7 @@ import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
 import { resolveFindings } from '../core/vulns/findings.js'
 import { queryOsv } from '../core/vulns/osv.js'
 import type { OsvVulnerability } from '../core/vulns/osv-types.js'
+import { fetchExploitSignals, withExploitSignals } from '../core/vulns/priority.js'
 import type {
   DependencyGraph,
   Finding,
@@ -35,6 +36,12 @@ export interface PipelineOptions {
   offline: boolean
   useCache: boolean
   now: Date
+  /**
+   * Skip the EPSS and CISA KEV lookup. Off by default; `--offline` implies it,
+   * and so does `--no-priority` for a run that wants the advisories without two
+   * more network destinations.
+   */
+  noPriority?: boolean
   fetch?: typeof globalThis.fetch
   cache?: VulnCache
 }
@@ -55,6 +62,8 @@ export interface PipelineResult {
   /** Statements that matched nothing in this scan. */
   unmatchedStatements: VexStatement[]
   cacheHits: number
+  /** Exploit-signal sources that could not be reached. Named, never swallowed. */
+  priorityUnavailable: string[]
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
@@ -64,6 +73,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
   let findings: Finding[] = []
   let cacheHits = 0
   let osvByPackage = new Map<string, OsvVulnerability[]>()
+  let priorityUnavailable: string[] = []
   if (!options.offline) {
     const cache =
       options.cache ??
@@ -82,6 +92,20 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     cacheHits = result.cacheHits
     osvByPackage = result.byPackage
     findings = resolveFindings(graph, result.byPackage)
+
+    // Enrichment, after the findings exist and before VEX is applied, so a
+    // suppressed finding still carries the signals a reviewer needs to judge
+    // the suppression.
+    if (options.noPriority !== true) {
+      const signals = await fetchExploitSignals(findings, {
+        fetch: options.fetch ?? globalThis.fetch,
+        cache,
+        userAgent: `${TOOL_NAME}/${TOOL_VERSION}`,
+        today: options.now.toISOString().slice(0, 10),
+      })
+      priorityUnavailable = signals.unavailable
+      findings = findings.map((finding) => withExploitSignals(finding, signals.byCve))
+    }
   }
 
   // Suppressions are applied after the lookup, never instead of it: a suppressed
@@ -97,6 +121,7 @@ export async function runPipeline(options: PipelineOptions): Promise<PipelineRes
     vex,
     unmatchedStatements: applied.unmatched,
     cacheHits,
+    priorityUnavailable,
   }
 }
 

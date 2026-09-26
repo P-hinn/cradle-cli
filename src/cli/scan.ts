@@ -39,6 +39,8 @@ Options:
   --include-dev            Include development dependencies (default: production only)
   --offline                Skip the vulnerability lookup and mark the output offline
   --no-cache               Do not read or write the local advisory cache
+  --no-priority            Skip the EPSS and CISA KEV lookup. --offline already
+                           does; this keeps the advisories without the extras
   --spec-version <1.6|1.7> CycloneDX version to emit (default: 1.6)
   --sbom-format <f>        cyclonedx (default), spdx, or both. SPDX 2.3 JSON is
                            written as sbom.spdx.json
@@ -85,6 +87,7 @@ export async function runScan(
       // Declared literally, not as a negation: node's parseArgs has no --no-
       // prefix support, so `cache: {...}` alone would reject `--no-cache`.
       'no-cache': { type: 'boolean', default: false },
+      'no-priority': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
       'sbom-format': { type: 'string', default: 'cyclonedx' },
       'vex-format': { type: 'string', default: 'openvex' },
@@ -155,17 +158,25 @@ export async function runScan(
 
   // Shared with `check`, so a green gate and a clean report can never disagree
   // about what a finding is.
-  const { graph, findings, suppressed, vex, unmatchedStatements, cacheHits, osvByPackage } =
-    await runPipeline({
-      projectDir,
-      outputDir,
-      includeDev,
-      offline,
-      useCache: values['no-cache'] !== true,
-      now: now(),
-      ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
-      ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
-    })
+  const {
+    graph,
+    findings,
+    suppressed,
+    vex,
+    unmatchedStatements,
+    cacheHits,
+    osvByPackage,
+    priorityUnavailable,
+  } = await runPipeline({
+    projectDir,
+    outputDir,
+    includeDev,
+    offline,
+    useCache: values['no-cache'] !== true,
+    now: now(),
+    ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+    ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
+  })
 
   // A run stamps the current time and a fresh UUID by default, because a report
   // should say when it was made. Both are overridable so that a build can be
@@ -319,6 +330,7 @@ export async function runScan(
         toolName: TOOL_NAME,
         toolVersion: TOOL_VERSION,
         lang,
+        priorityUnavailable,
       }),
       'utf8',
     )

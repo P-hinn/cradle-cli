@@ -28,6 +28,8 @@ export interface ReportInput {
   readiness?: ReadinessReport
   /** Present only when a profile was asked for; absent leaves the section out. */
   profile?: ProfileReport
+  /** Exploit-signal sources that could not be reached, named in the table note. */
+  priorityUnavailable?: readonly string[]
   /** ISO 8601 timestamp of the scan. */
   timestamp: string
   offline: boolean
@@ -308,7 +310,13 @@ function findingsSection(input: ReportInput, t: Strings): string {
     findings.some((finding) => finding.severity === severity),
   )
 
+  const exploitNote =
+    input.priorityUnavailable === undefined || input.priorityUnavailable.length === 0
+      ? ''
+      : ` ${escapeHtml(t.findings.exploitUnavailable(input.priorityUnavailable.join(' / ')))}`
+
   return `<h2>${escapeHtml(t.findings.heading)} <span class="count">${findings.length}</span></h2>
+<p class="section-note">${escapeHtml(t.findings.exploitCaption)}${exploitNote}</p>
 <div class="controls" data-controls="findings" hidden>
   <input type="search" data-filter="text" placeholder="${escapeHtml(t.findings.filterPlaceholder)}" aria-label="${escapeHtml(t.findings.filterLabel)}">
 ${severities
@@ -318,6 +326,7 @@ ${severities
   )
   .join('\n')}
   <label><input type="checkbox" data-facet="fix" value="none"> ${escapeHtml(t.findings.noFix)}</label>
+  <label><input type="checkbox" data-facet="exploited" value="known"> ${escapeHtml(t.findings.knownExploited)}</label>
   <span class="spacer"></span>
   <span class="result-count" data-result-count aria-live="polite"></span>
 </div>
@@ -326,6 +335,7 @@ ${severities
   <th data-sort="severity">${escapeHtml(t.findings.severity)}</th>
   <th data-sort="id">${escapeHtml(t.findings.advisory)}</th>
   <th data-sort="package">${escapeHtml(t.findings.package)}</th>
+  <th data-sort="exploited">${escapeHtml(t.findings.exploited)}</th>
   <th data-sort="fixversion">${escapeHtml(t.findings.fixedIn)}</th>
   <th><span class="sr-only">${escapeHtml(t.findings.details)}</span></th>
 </tr></thead>
@@ -350,15 +360,77 @@ function findingRows(finding: Finding, t: Strings): string {
   const osvUrl = safeUrl(finding.osvUrl)
   const path = finding.path.map((name) => escapeHtml(name)).join('<span class="sep">›</span>')
 
-  const row = `  <tr data-search="${escapeHtml(haystack)}" data-severity="${escapeHtml(finding.severity)}" data-fix="${finding.fixedIn === undefined ? 'none' : 'available'}" data-sort-severity="${severityRank(finding.severity)}" data-sort-id="${escapeHtml(finding.id)}" data-sort-package="${escapeHtml(finding.component.name)}" data-sort-fixversion="${escapeHtml(finding.fixedIn ?? '')}">
+  const row = `  <tr data-search="${escapeHtml(haystack)}" data-severity="${escapeHtml(finding.severity)}" data-fix="${finding.fixedIn === undefined ? 'none' : 'available'}" data-exploited="${finding.exploit?.knownExploited === true ? 'known' : 'unknown'}" data-sort-exploited="${exploitRank(finding)}" data-sort-severity="${severityRank(finding.severity)}" data-sort-id="${escapeHtml(finding.id)}" data-sort-package="${escapeHtml(finding.component.name)}" data-sort-fixversion="${escapeHtml(finding.fixedIn ?? '')}">
     <td>${severityMark(finding.severity, t)}</td>
     <td>${osvUrl === undefined ? `<code>${escapeHtml(finding.id)}</code>` : `<a href="${escapeHtml(osvUrl)}" rel="noopener noreferrer"><code>${escapeHtml(finding.id)}</code></a>`}${finding.aliases.length === 0 ? '' : `<div class="pathline">${finding.aliases.map((a) => escapeHtml(a)).join(', ')}</div>`}</td>
     <td><code>${escapeHtml(finding.component.name)}</code> <span class="mono">${escapeHtml(finding.component.version)}</span>${finding.component.direct ? ` <span class="tag">${escapeHtml(t.components.direct)}</span>` : ''}<div class="pathline">${path}</div></td>
+    <td>${exploitCell(finding, t)}</td>
     <td>${finding.fixedIn === undefined ? `<span class="tag">${escapeHtml(t.findings.noFix)}</span>` : `<span class="mono">${escapeHtml(finding.fixedIn)}</span>`}</td>
     <td><button type="button" class="disclose" aria-expanded="false" hidden>${escapeHtml(t.findings.details)}</button></td>
   </tr>`
 
   return `${row}\n${findingDetail(finding, t)}`
+}
+
+/**
+ * The exploitation cell.
+ *
+ * Empty of data is said in words rather than left blank or shown as zero. "No
+ * data" and "not being exploited" are different answers, and both sources are
+ * keyed on CVE — so an advisory cradle knows only by its GHSA has no score, which
+ * says nothing about the vulnerability.
+ */
+function exploitCell(finding: Finding, t: Strings): string {
+  const exploit = finding.exploit
+  if (exploit === undefined) {
+    return `<span class="tag">${escapeHtml(t.findings.noExploitData)}</span>`
+  }
+
+  const parts: string[] = []
+  if (exploit.knownExploited === true) {
+    const label =
+      exploit.knownExploitedSince === undefined || exploit.knownExploitedSince === ''
+        ? t.findings.knownExploited
+        : t.findings.knownExploitedSince(exploit.knownExploitedSince)
+    parts.push(`<strong>${escapeHtml(label)}</strong>`)
+  }
+  if (exploit.epss !== undefined) {
+    parts.push(
+      escapeHtml(
+        t.findings.epss(
+          `${(exploit.epss * 100).toFixed(1)}%`,
+          exploit.epssPercentile === undefined ? '—' : formatPercentile(exploit.epssPercentile, t),
+        ),
+      ),
+    )
+  }
+  return parts.length === 0
+    ? `<span class="tag">${escapeHtml(t.findings.noExploitData)}</span>`
+    : parts.join('<div class="pathline"></div>')
+}
+
+/**
+ * The percentile, spelled the way the language spells it: an English ordinal
+ * ("91st"), a German one ("91."). "91th" is the kind of wrong a reader notices,
+ * and noticing it costs the rest of the page some credibility.
+ */
+function formatPercentile(percentile: number, t: Strings): string {
+  const value = Math.round(percentile * 100)
+  if (t.htmlLang === 'de') return String(value)
+  const suffix =
+    value % 100 >= 11 && value % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][value % 10] ?? 'th')
+  return `${value}${suffix}`
+}
+
+/**
+ * A sortable number for the exploitation column. Known-exploited outranks any
+ * EPSS score, and no data sorts last rather than as zero.
+ */
+function exploitRank(finding: Finding): number {
+  const exploit = finding.exploit
+  if (exploit === undefined) return -1
+  if (exploit.knownExploited === true) return 2
+  return exploit.epss === undefined ? -1 : exploit.epss
 }
 
 function findingDetail(finding: Finding, t: Strings): string {
@@ -388,7 +460,7 @@ function findingDetail(finding: Finding, t: Strings): string {
     ])
   }
 
-  return `  <tr class="detail-row" data-open="false" hidden><td colspan="5">
+  return `  <tr class="detail-row" data-open="false" hidden><td colspan="6">
     <dl class="detail-grid">
 ${rows.map(([term, value]) => `      <dt>${escapeHtml(term)}</dt><dd>${value}</dd>`).join('\n')}
     </dl>

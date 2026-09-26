@@ -11,6 +11,7 @@ import {
 import { CradleError } from '../core/errors.js'
 import { BSI_TR_03183_2, checkBsiProfile } from '../core/readiness/profiles/bsi-tr-03183.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
+import { byExploitPriority } from '../core/vulns/priority.js'
 import { atOrAbove, severityRank } from '../core/vulns/severity.js'
 import { isLanguage, LANGUAGES } from '../report/i18n/index.js'
 import { buildPullRequestComment } from '../report/markdown.js'
@@ -49,6 +50,9 @@ Options:
                         was uploaded
   --include-dev         Include development dependencies
   --no-cache            Do not read or write the local advisory cache
+  --no-priority         Skip the EPSS and CISA KEV lookup
+  --sort <order>        severity (default) or exploit, which puts what CISA
+                        knows is being exploited first, then EPSS, then severity
   --workspace <name>    Gate one workspace package instead of the repository.
                         Its baseline lives in that package's own .cradle/
   --lang <en|de>        Language of the markdown comment (default: en)
@@ -90,6 +94,8 @@ export async function runCheck(
       format: { type: 'string', default: 'text' },
       'include-dev': { type: 'boolean', default: false },
       'no-cache': { type: 'boolean', default: false },
+      'no-priority': { type: 'boolean', default: false },
+      sort: { type: 'string', default: 'severity' },
       'artifact-name': { type: 'string' },
       offline: { type: 'boolean', default: false },
       workspace: { type: 'string' },
@@ -118,6 +124,15 @@ export async function runCheck(
     throw new CradleError(
       `Unknown --profile '${profile}'`,
       `The only profile cradle ships is ${BSI_TR_03183_2.id} (BSI TR-03183-2 v${BSI_TR_03183_2.version}).`,
+    )
+  }
+
+  const sort = values.sort
+  if (sort !== 'severity' && sort !== 'exploit') {
+    throw new CradleError(
+      `Unknown --sort '${sort}'`,
+      'Use severity (the default) or exploit. The sort order changes what you look at first; ' +
+        'it never changes the exit code, which stays CVSS-based.',
     )
   }
 
@@ -156,6 +171,7 @@ export async function runCheck(
     includeDev: values['include-dev'] === true,
     offline: values.offline === true,
     useCache: values['no-cache'] !== true,
+    noPriority: values['no-priority'] === true,
     now,
     ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
     ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
@@ -285,6 +301,8 @@ export async function runCheck(
       offline: result.findings.length === 0 && values.offline === true,
       project: `${result.graph.root.name} ${result.graph.root.version}`,
       scope: result.graph.includeDev ? 'all dependencies' : 'production only',
+      sort,
+      priorityUnavailable: result.priorityUnavailable,
     }),
   )
   if (profileReport !== undefined) stdout.write(renderProfileText(profileReport))
@@ -331,6 +349,42 @@ interface SummaryInput {
   offline: boolean
   project: string
   scope: string
+  sort: 'severity' | 'exploit'
+  priorityUnavailable: string[]
+}
+
+/**
+ * One line about exploitation, or nothing.
+ *
+ * "Nothing" is the honest answer for a finding with no CVE alias, because both
+ * sources are keyed on CVE. Printing "EPSS 0" there would turn absent data into
+ * a claim that exploitation is unlikely.
+ */
+/** 1st, 2nd, 3rd, 4th. "91th percentile" is the kind of wrong that gets noticed. */
+function ordinal(value: number): string {
+  const suffix =
+    value % 100 >= 11 && value % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][value % 10] ?? 'th')
+  return `${value}${suffix}`
+}
+
+function exploitLine(finding: Finding): string | undefined {
+  const exploit = finding.exploit
+  if (exploit === undefined) return undefined
+
+  const parts: string[] = []
+  if (exploit.knownExploited === true) {
+    parts.push(
+      `on CISA KEV${exploit.knownExploitedSince === undefined || exploit.knownExploitedSince === '' ? '' : ` since ${exploit.knownExploitedSince}`}`,
+    )
+  }
+  if (exploit.epss !== undefined) {
+    const percentile =
+      exploit.epssPercentile === undefined
+        ? ''
+        : `, ${ordinal(Math.round(exploit.epssPercentile * 100))} percentile`
+    parts.push(`EPSS ${(exploit.epss * 100).toFixed(1)}%${percentile}`)
+  }
+  return parts.length === 0 ? undefined : parts.join(' · ')
 }
 
 function summarize(input: SummaryInput): string {
@@ -358,19 +412,39 @@ function summarize(input: SummaryInput): string {
   lines.push('')
 
   if (diff.added.length > 0) {
-    lines.push('  New since the baseline')
-    for (const finding of [...diff.added].sort(
-      (a, b) => severityRank(a.severity) - severityRank(b.severity),
-    )) {
+    lines.push(
+      input.sort === 'exploit'
+        ? '  New since the baseline, most likely exploited first'
+        : '  New since the baseline',
+    )
+    const ordered =
+      input.sort === 'exploit'
+        ? [...diff.added].sort((a, b) =>
+            byExploitPriority(a, b, (finding) => severityRank(finding.severity)),
+          )
+        : [...diff.added].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))
+
+    for (const finding of ordered) {
       const fix = finding.fixedIn === undefined ? 'no fix yet' : `fix in ${finding.fixedIn}`
       const worse = diff.worsened.includes(finding) ? ', re-rated worse since accepted' : ''
       lines.push(
         `    ${finding.severity.padEnd(8)} ${finding.id}  ${finding.component.name} ` +
           `${finding.component.version}  (${fix}${worse})`,
       )
+      const exploit = exploitLine(finding)
+      if (exploit !== undefined) lines.push(`             ${exploit}`)
       if (!finding.component.direct) lines.push(`             ${finding.path.join(' > ')}`)
     }
     lines.push('')
+  }
+
+  if (input.priorityUnavailable.length > 0) {
+    // Named rather than swallowed: a missing column is a gap in the data, and a
+    // reader who does not know it is missing will read it as "no signal".
+    lines.push(
+      `  ! Exploit signals incomplete — could not reach ${input.priorityUnavailable.join(' or ')}.`,
+      '',
+    )
   }
 
   if (diff.resolved.length > 0) {

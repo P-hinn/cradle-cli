@@ -13,6 +13,8 @@ export interface FakeOsv {
   calls: string[]
   /** Only the OSV ones, for tests that care about advisory traffic. */
   osvCalls: string[]
+  /** EPSS and CISA KEV, counted separately for the same reason. */
+  priorityCalls: string[]
   batchBodies: unknown[]
 }
 
@@ -21,6 +23,20 @@ export interface FakeOsv {
  * else is answered as "no advisories", which is what OSV does.
  */
 const RECORDED_ORDER = ['lodash@4.17.15', 'minimist@1.2.0']
+
+/**
+ * EPSS scores for the CVEs the recorded advisories carry. Deliberately spread
+ * across the range: one high, one low, so a test can tell an ordering bug from a
+ * coincidence.
+ */
+const EPSS: Record<string, { epss: string; percentile: string }> = {
+  'CVE-2021-44906': { epss: '0.04581', percentile: '0.91291' },
+  'CVE-2020-8203': { epss: '0.00219', percentile: '0.45210' },
+  'CVE-2021-23337': { epss: '0.00312', percentile: '0.52104' },
+}
+
+/** CVEs the fake CISA catalogue lists as known-exploited, with the date added. */
+const KEV: Record<string, string> = { 'CVE-2020-8203': '2024-05-01' }
 
 export interface FakeOsvOptions {
   /**
@@ -32,6 +48,10 @@ export interface FakeOsvOptions {
   networkErrors?: number
   /** Serve this batch response instead of the recorded one. */
   batchResponse?: unknown
+  /** Make the EPSS endpoint unreachable, to exercise the degraded path. */
+  epssDown?: boolean
+  /** Make the CISA KEV feed unreachable. */
+  kevDown?: boolean
 }
 
 /**
@@ -44,6 +64,7 @@ export interface FakeOsvOptions {
 export function fakeOsv(options: FakeOsvOptions = {}): FakeOsv {
   const calls: string[] = []
   const osvCalls: string[] = []
+  const priorityCalls: string[] = []
   const batchBodies: unknown[] = []
   const failures = [...(options.failWith ?? [])]
   let networkErrors = options.networkErrors ?? 0
@@ -58,6 +79,31 @@ export function fakeOsv(options: FakeOsvOptions = {}): FakeOsv {
     if (url.startsWith('https://registry.npmjs.org/')) {
       return new Response('not found', { status: 404 })
     }
+
+    // EPSS and CISA KEV are enrichment, not the advisory lookup, so they are
+    // counted apart - a test about advisory traffic should not move when a
+    // second source is added.
+    if (url.startsWith('https://api.first.org/')) {
+      priorityCalls.push(url)
+      if (options.epssDown === true) return new Response('', { status: 503 })
+      const wanted = new URL(url).searchParams.get('cve')?.split(',') ?? []
+      return Response.json({
+        status: 'OK',
+        data: wanted
+          .filter((cve) => EPSS[cve] !== undefined)
+          .map((cve) => ({ cve, ...EPSS[cve], date: '2026-09-25' })),
+      })
+    }
+    if (url.startsWith('https://www.cisa.gov/')) {
+      priorityCalls.push(url)
+      if (options.kevDown === true) return new Response('', { status: 503 })
+      return Response.json({
+        catalogVersion: '2026.09.25',
+        count: Object.keys(KEV).length,
+        vulnerabilities: Object.entries(KEV).map(([cveID, dateAdded]) => ({ cveID, dateAdded })),
+      })
+    }
+
     osvCalls.push(url)
 
     if (networkErrors > 0) {
@@ -95,5 +141,5 @@ export function fakeOsv(options: FakeOsvOptions = {}): FakeOsv {
     return Response.json(read(`${id}.json`))
   }) as typeof globalThis.fetch
 
-  return { fetch, calls, osvCalls, batchBodies }
+  return { fetch, calls, osvCalls, priorityCalls, batchBodies }
 }

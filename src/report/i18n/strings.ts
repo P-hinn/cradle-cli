@@ -91,6 +91,14 @@ export interface Strings {
     severityFromCvss: (severity: string, version: string, score: string, vector: string) => string
     severityFromDatabase: (severity: string) => string
     severityUnknown: string
+    /** The exploitation column, which is a different question from severity. */
+    exploited: string
+    knownExploited: string
+    knownExploitedSince: (date: string) => string
+    epss: (percent: string, percentile: string) => string
+    noExploitData: string
+    exploitCaption: string
+    exploitUnavailable: (sources: string) => string
   }
 
   readiness: {

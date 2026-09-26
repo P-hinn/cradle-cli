@@ -174,6 +174,27 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   know whether anyone is exploiting it. That sits at the top of every draft, not
   in a footnote.
 
+- **EPSS and CISA KEV, as an ordering signal.** A CVSS base score answers "how bad
+  would this be"; triage under a clock needs "is anyone doing it". EPSS (FIRST)
+  estimates the probability of exploitation in the next 30 days, and the CISA
+  Known Exploited Vulnerabilities catalogue is evidence that it is happening. Both
+  appear as a column in the report and a line in `cradle check`, and
+  `check --sort exploit` puts known-exploited first, then EPSS, then severity — a
+  medium CISA has evidence about outranks a critical nobody has touched, which is
+  the opposite of what sorting by severity says.
+
+  **`--fail-on` stays CVSS-based.** A gate whose threshold moves daily with
+  somebody else's model goes red overnight for reasons nobody on the team changed.
+  These order the work; the threshold decides what blocks.
+
+  Cached like the advisory lookup, re-keyed daily because both sources are, and
+  skipped by `--offline` or `--no-priority`. An outage at either source is a named
+  caveat rather than a failed scan — and a finding with no CVE alias (both sources
+  are keyed on CVE) shows **no data** rather than a zero, because "no data" and "no
+  risk" are different answers. Only CVE identifiers leave the machine: no package
+  name, no version, nothing about the project. `SECURITY.md` records both new
+  destinations.
+
 ### Changed
 
 - **The Article 14 final-report deadline is stated correctly now.** The README and
