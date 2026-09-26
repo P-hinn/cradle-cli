@@ -3,6 +3,49 @@
 Notable changes, newest first. Versions follow [semantic versioning](https://semver.org);
 while the project is pre-1.0, a minor bump may still change behaviour.
 
+## Unreleased
+
+### Added
+
+- **Continuous integration.** `.github/workflows/ci.yml` runs the full gate —
+  lint, typecheck, test, build — on Node 22 and 24 across Linux, macOS and
+  Windows, then runs the freshly built CLI against `examples/express-service`
+  from its lockfile with `--offline` and asserts both sides of the exit-code
+  contract: `0` for a clean run and `2` for a path that cannot be read. Six
+  matrix combinations rather than a sample, because the lockfile parsers join
+  paths and a separator bug that only shows on Windows is the one that reaches a
+  user before it reaches us.
+- **CodeQL** with the `security-extended` query pack, and **OpenSSF Scorecard**
+  publishing its result so the badge is verifiable by someone who does not trust
+  the badge. Both have a badge in the README.
+- **Dependabot** for npm and the workflow actions, weekly and grouped. The
+  example project is deliberately excluded: it is pinned to dated dependencies
+  so that it produces findings, and updating it would defeat it.
+- **`CONTRIBUTING.md`**, **`CODE_OF_CONDUCT.md`** (Contributor Covenant 2.1),
+  issue templates for bugs, features and **false-positive findings** — the last
+  asking for the package manager, lockfile version and advisory ID, without
+  which a false positive cannot be reproduced — and a pull-request template.
+
+### Fixed
+
+- **The release workflow could attach evidence from the wrong commit.** With
+  `0.1.3` the publish succeeded and the run then failed uploading the second
+  SBOM: release assets are keyed by filename, both SBOMs are written as
+  `sbom.cdx.json`, and the duplicate name came back as `HTTP 404`. Making the
+  names distinct fixed the upload, and making the workflow re-runnable meant a
+  partial failure no longer burns a version number — but the two together left a
+  gap. A re-run skips the publish when the version is already on the registry
+  while still rebuilding the assets, so if the tag had moved in between, the SBOM
+  and report on the release would describe a different commit than the published
+  tarball. It now compares npm's recorded `gitHead` against the commit being
+  built and refuses rather than publishing evidence about something other than
+  what shipped. A published version is final: bump and tag again instead of
+  moving a tag.
+- **A failed scan is no longer discovered after the publish.** Both scans run
+  with `|| true`, because a finding over the threshold is not a broken release —
+  but a crash looks the same from the exit code. The evidence files are now
+  checked for existence in the scan step, ahead of the publish.
+
 ## 0.1.0 — 2026-08-28
 
 First release.

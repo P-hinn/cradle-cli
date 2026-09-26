@@ -5,6 +5,9 @@
 **A CycloneDX SBOM, the vulnerabilities that apply to it, and one HTML report you can send to an auditor — from a single command in any npm project.**
 
 [![npm](https://img.shields.io/npm/v/cradle-cli?color=1f4e79&label=npm)](https://www.npmjs.com/package/cradle-cli)
+[![ci](https://github.com/P-hinn/cradle-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/P-hinn/cradle-cli/actions/workflows/ci.yml)
+[![codeql](https://github.com/P-hinn/cradle-cli/actions/workflows/codeql.yml/badge.svg)](https://github.com/P-hinn/cradle-cli/actions/workflows/codeql.yml)
+[![scorecard](https://api.scorecard.dev/projects/github.com/P-hinn/cradle-cli/badge)](https://scorecard.dev/viewer/?uri=github.com/P-hinn/cradle-cli)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-1f4e79)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A5%2022.9-1f4e79)](#requirements)
 [![CycloneDX](https://img.shields.io/badge/CycloneDX-1.6%20%C2%B7%201.7-1f4e79)](https://cyclonedx.org/)
@@ -371,10 +374,23 @@ January 2027, when npm restricts tokens that bypass 2FA. Without it, set an
 
 ## Contributing
 
-Issues and pull requests welcome. [`SPEC.md`](SPEC.md) is the working
-specification — what was decided, and why — and is worth reading before changing
-behaviour. Security reports go through [`SECURITY.md`](SECURITY.md), not the
-issue tracker.
+Issues and pull requests welcome. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the
+setup, the four commands that make up the gate, and how to add a lockfile
+fixture — which is the most useful contribution there is, because a lockfile
+shape cradle gets wrong is a bug report with a fix attached.
+
+[`SPEC.md`](SPEC.md) is the working specification — what was decided, and why —
+and is worth reading before changing behaviour. It is in German; this README is
+authoritative for users.
+
+Security reports go through [`SECURITY.md`](SECURITY.md), not the issue tracker.
+Everyone taking part is covered by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+Every push and pull request runs the full gate on Node 22 and 24 across Linux,
+macOS and Windows, then scans the example project with the freshly built CLI.
+CodeQL and OpenSSF Scorecard run alongside it — for a tool whose subject is
+supply-chain evidence, publishing its own score is the least it can do.
 
 ---
 

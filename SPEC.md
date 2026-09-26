@@ -1,5 +1,11 @@
 # cradle — Spezifikation
 
+> **German-language working spec; README is authoritative for users.**
+> This document records what was decided and why, in German, for whoever
+> develops cradle. Anything a user needs is in the English
+> [`README.md`](README.md); where the two appear to differ about a user-visible
+> promise, the README is the one that was published.
+
 Verbindliche Referenz für die Entwicklung. Enthält die ursprüngliche Spezifikation
 des Maintainers, die daran vorgenommenen fachlichen Korrekturen und die getroffenen
 Designentscheidungen. Bei Widerspruch gilt dieses Dokument.
@@ -676,3 +682,147 @@ Es ist keine Rechtsberatung, keine Konformitätsbewertung und keine
 Konformitätserklärung. Ob ein Produkt die Anforderungen der Verordnung (EU) 2024/2847
 erfüllt, entscheidet nicht dieses Werkzeug. Die harmonisierten Normen zum CRA sind
 zum Stand dieses Dokuments nicht final.
+
+---
+
+# Nachträge nach dem ersten Release
+
+Die Abschnitte 1–12 beschreiben den Stand bis 0.1.3. Alles darunter wurde danach
+entschieden und ergänzt sie, statt sie zu ersetzen. Neue Abschnitte werden
+angehängt, damit die Nummern in 1–12 als Referenzen stabil bleiben.
+
+## 13. Repo-Infrastruktur
+
+### 13.1 Continuous Integration (`.github/workflows/ci.yml`)
+
+Läuft auf `push` nach `main` und auf jeden `pull_request`. Matrix: Node **22 und
+24** × **ubuntu, macos, windows** — sechs Kombinationen, keine Stichprobe davon.
+
+**Warum drei Betriebssysteme.** Die Lockfile-Parser setzen Pfade zusammen, und
+`node_modules`-Ketten werden hochgelaufen (§4.1). Ein Trennzeichen-Fehler, der
+nur unter Windows auftritt, erreicht sonst einen Nutzer, bevor er uns erreicht.
+`fail-fast: false`, weil ein abgebrochener macOS-Lauf genau die Information
+verschweigt, die man braucht: ob der Fehler plattformspezifisch war.
+
+**Warum Node 24 mitläuft.** 22.9 ist der deklarierte Boden (`engines`), 24 ist
+aktuell. Ein Test prüft, dass die untere Matrix-Stufe und `engines.node`
+zusammenpassen; ein angehobener Boden ohne angehobene Matrix wäre sonst
+unbemerkt.
+
+**Schritte:** `npm ci`, `lint`, `typecheck`, `test`, `build` — und danach das
+gebaute CLI gegen `examples/express-service`:
+
+* `scan --offline` muss die drei Dateien nicht-leer schreiben, und
+  `findings.json` muss `offline: true` tragen. Eine leere Findings-Liste ohne
+  diese Markierung liest sich wie ein geprüftes „nichts gefunden" (§6.2).
+* `check --offline` muss **0** liefern, und `check --offline ./does-not-exist`
+  muss **2** liefern. Beide Seiten des Exit-Code-Vertrags (§6.4), nicht nur die
+  glückliche.
+
+**`--offline` ist hier keine Bequemlichkeit.** Ein CI-Job, der `api.osv.dev`
+abfragt, macht eine fremde Störung zu einem roten Build in diesem Repo und den
+Lauf nebenbei nicht reproduzierbar. Ein Test prüft, dass **jeder** Aufruf des
+gebauten CLI in `ci.yml` `--offline` trägt.
+
+**Falle, die einen eigenen Test bekommen hat.** GitHub startet `shell: bash` als
+`bash --noprofile --norc -eo pipefail`. Das `-e` kommt von außen und wird von
+einem `set -uo pipefail` im Skript **nicht** abgeschaltet. Ein Schritt, der `$?`
+ausliest, stirbt damit am ersten Exit ungleich null — die Assertion läuft nie und
+der Schritt ist grün, weil er nicht hingesehen hat. Deshalb: `set +e` explizit,
+und ein Test, der jeden Schritt mit `$?` darauf festnagelt. Dieselbe Falle ist in
+§6.6 für die Action beschrieben; hier ist sie zum zweiten Mal aufgetreten.
+
+### 13.2 CodeQL und OpenSSF Scorecard
+
+**CodeQL** mit `javascript-typescript` und dem Paket `security-extended`, nicht
+dem Default. Die beiden Fragen, die hier zählen, stehen nur im erweiterten Paket:
+Pfad-Traversal aus dem Projektverzeichnis heraus (§SECURITY.md) und unsichere
+HTML-Konstruktion im Report-Generator. Läuft zusätzlich wöchentlich — ein Repo
+mit vier Abhängigkeiten bekommt trotzdem neue Queries.
+
+**Scorecard** mit `publish_results: true`. Für ein Werkzeug, dessen Thema
+Supply-Chain-Nachweise sind, ist ein veröffentlichter, nachprüfbarer Score das
+Mindeste; ein Badge, dem man nur glauben kann, wäre genau die Sorte Nachweis, die
+cradle anderen nicht abnimmt. `persist-credentials: false` beim Checkout.
+
+**Actions werden auf `@vN` gepinnt, nicht auf einen SHA.** Scorecards
+`Pinned-Dependencies`-Check bewertet SHA-Pinning besser. Die Entscheidung geht
+trotzdem bewusst anders: `@vN` plus wöchentliches Dependabot für
+`github-actions` hält die Versionen aktuell und lesbar, und ein bestehender Test
+(`test/action.test.ts`) erzwingt das Pinning-Muster repo-weit. Ein niedrigerer
+Punktwert in einem Unterpunkt ist hier der ehrlichere Preis.
+
+### 13.3 Dependabot
+
+npm und `github-actions`, wöchentlich, **gruppiert** — Runtime und Development
+getrennt. Vier Runtime-Abhängigkeiten und eine Handvoll Dev-Abhängigkeiten
+ergeben einen prüfbaren Pull Request pro Woche; acht einzelne öffnet niemand.
+Commit-Präfixe `chore` bzw. `ci`, passend zu §9.
+
+**`examples/express-service` ist ausdrücklich nicht eingetragen.** Das Beispiel
+ist auf absichtlich veraltete Abhängigkeiten gepinnt, damit es Findings
+produziert. Es zu aktualisieren würde es abschaffen. Ein Test hält fest, dass
+kein Dependabot-Eintrag auf ein anderes Verzeichnis als `/` zeigt, damit diese
+Auslassung als Entscheidung erkennbar bleibt und nicht als Versehen.
+
+### 13.4 Community-Dateien
+
+`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1, Kontakt
+identisch mit `SECURITY.md` — ein Test koppelt beide, damit nicht zwei Adressen
+auseinanderlaufen), `PULL_REQUEST_TEMPLATE.md` und drei Issue-Templates.
+`blank_issues_enabled: false`: ein leeres Issue ist der Weg, auf dem eine
+Schwachstelle öffentlich wird.
+
+Das dritte Template, **false-positive-finding**, ist das eigentliche. Es verlangt
+**Package Manager, Lockfile-Version und Advisory-ID** als Pflichtfelder — ohne
+alle drei ist ein False Positive nicht reproduzierbar, und ein nicht
+reproduzierbares False Positive ist eine Meinung. Es trennt außerdem vorab drei
+Fälle, die sonst jeder einzeln beantwortet werden müssten: ein falsches Advisory
+gehört zu OSV, ein zutreffendes Advisory ohne Bezug zum Projekt gehört in
+`cradle suppress`, und hierher gehört nur cradles eigene Mechanik — falsch
+gematchte Ranges, falsch gerechnetes CVSS, falsche Fix-Version, falscher Pfad.
+
+`CONTRIBUTING.md` beschreibt zwei Sorten Fixture getrennt, weil sie
+unterschiedliche Aufgaben haben: `test/fixtures/` für *was cradle mit einer Form
+macht* (klein, handgeschrieben, im Diff lesbar) und `test/corpus/` für *hält
+cradle eine echte Lockfile in echter Größe aus* (siehe §14).
+
+## 14. Release-Prozess: die Lücke nach 0.1.3
+
+`v0.1.3` hat zwei Fehler nacheinander offengelegt.
+
+**Erstens, die ursprüngliche Ursache.** Release-Assets sind nach Dateinamen
+verschlüsselt, und beide SBOMs heißen dort, wo sie geschrieben werden,
+`sbom.cdx.json`. Der zweite Upload kam als `HTTP 404` zurück. Das Release war
+damit angelegt, der Lauf aber rot, und die Assets fehlten. Behoben durch
+eindeutige Namen (`<paket>-<version>-sbom.cdx.json`) und dadurch, dass der
+Workflow wiederholbar wurde: `gh release view` → `edit` oder `create`, Upload mit
+`--clobber`. Ein fehlgeschlagener Lauf soll durch einen zweiten Lauf zu
+reparieren sein, nicht durch eine verbrannte Versionsnummer.
+
+**Zweitens, die Lücke, die dadurch entstand.** Ein Wiederholungslauf überspringt
+`npm publish`, wenn die Version schon auf der Registry liegt — baut die Assets
+aber neu. Wurde der Tag zwischenzeitlich verschoben, beschreiben SBOM und Report
+auf dem Release einen anderen Commit als das veröffentlichte Tarball. Genau das
+war nach 0.1.3 der Zustand: npm führt `gitHead = 44eb98d`, der Tag `v0.1.3` zeigt
+auf `1fb556f`.
+
+Für ein Werkzeug, dessen Zweck Nachvollziehbarkeit ist, ist das das schlechteste
+mögliche Ergebnis — schlechter als ein roter Lauf, weil es grün aussieht.
+Entscheidung:
+
+* Im Skip-Pfad wird npms `gitHead` gegen `$GITHUB_SHA` verglichen. Abweichung →
+  **Abbruch** mit der Anweisung, die Version zu erhöhen statt den Tag zu
+  verschieben.
+* Lässt sich `gitHead` nicht lesen, ist die Gleichheit **nicht bewiesen** und das
+  ist derselbe Abbruch. „Nicht prüfbar" heißt hier nicht „wahrscheinlich in
+  Ordnung" — dieselbe Regel, die die Readiness-Checkliste auf sich selbst
+  anwendet (§6.5).
+* **Eine veröffentlichte Version ist endgültig.** Tags werden nicht verschoben.
+
+**Drittens, eine verwandte Reihenfolge.** Die beiden Selbst-Scans laufen mit
+`|| true`, weil ein Finding über der Schwelle kein kaputtes Release ist. Ein
+Absturz sieht am Exit-Code identisch aus. Die Evidenzdateien werden deshalb auf
+Existenz geprüft — und zwar **im Scan-Schritt, vor dem Publish**. Vorher fiel ein
+fehlendes SBOM erst beim Upload auf, also nachdem die Version auf der Registry
+war.
