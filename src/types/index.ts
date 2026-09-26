@@ -168,6 +168,13 @@ export interface CdxDependency {
   dependsOn?: string[]
 }
 
+/** CycloneDX `organizationalEntity`, used for who made the SBOM. */
+export interface CdxOrganizationalEntity {
+  name?: string
+  url?: string[]
+  contact?: { name?: string; email?: string }[]
+}
+
 export interface CdxBom {
   $schema: string
   bomFormat: 'CycloneDX'
@@ -176,6 +183,11 @@ export interface CdxBom {
   version: number
   metadata: {
     timestamp: string
+    /**
+     * Who created this SBOM. BSI TR-03183-2 §5.2.1 requires it; CycloneDX makes
+     * it optional, so it appears only when the project configured a contact.
+     */
+    manufacturer?: CdxOrganizationalEntity
     /**
      * Object form, not the array form. `metadata.tools` as an array has been
      * deprecated since CycloneDX 1.5 — see SPEC.md §5b.

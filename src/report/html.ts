@@ -1,3 +1,4 @@
+import type { ProfileFieldResult, ProfileReport } from '../core/readiness/profiles/bsi-tr-03183.js'
 import { countBySeverity } from '../core/vulns/findings.js'
 import { recommendUpgrades } from '../core/vulns/recommend.js'
 import { severityRank } from '../core/vulns/severity.js'
@@ -25,6 +26,8 @@ export interface ReportInput {
   /** Findings a live VEX statement has ruled out. Shown, never hidden. */
   suppressed?: readonly Finding[]
   readiness?: ReadinessReport
+  /** Present only when a profile was asked for; absent leaves the section out. */
+  profile?: ProfileReport
   /** ISO 8601 timestamp of the scan. */
   timestamp: string
   offline: boolean
@@ -73,6 +76,7 @@ export function buildReport(input: ReportInput): string {
 ${masthead(input)}
 ${summarySection(input)}
 ${readinessSection(input)}
+${profileSection(input)}
 ${findingsSection(input)}
 ${suppressedSection(input)}
 ${notesSection(graph)}
@@ -229,6 +233,68 @@ ${rows.map(([label, count]) => `  <tr><td>${label === 'undeclared' ? '<em>undecl
 // ---------------------------------------------------------------------------
 // Findings
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Standards profile
+// ---------------------------------------------------------------------------
+
+const PROFILE_STATUS: Record<ReadinessStatus, string> = {
+  met: 'Met',
+  partial: 'Partially',
+  open: 'Open',
+  'not-assessable': 'Not assessable',
+}
+
+/**
+ * A published profile, field by field.
+ *
+ * Placed after the CRA checklist and before the findings, because it answers the
+ * same kind of question — is the documentation in order — rather than a
+ * vulnerability question. Absent unless a profile was requested, so a reader of an
+ * ordinary report is not asked to care about a German technical guideline.
+ *
+ * Every row carries the clause it comes from. A checklist that cannot be traced
+ * back to the document it claims to implement is an opinion with a table around
+ * it.
+ */
+function profileSection(input: ReportInput): string {
+  const report = input.profile
+  if (report === undefined) return ''
+
+  const { profile } = report
+  const counts = [
+    `${report.counts.met} met`,
+    report.counts.partial > 0 ? `${report.counts.partial} partial` : '',
+    report.counts.open > 0 ? `${report.counts.open} open` : '',
+    report.counts['not-assessable'] > 0 ? `${report.counts['not-assessable']} not assessable` : '',
+  ]
+    .filter((part) => part !== '')
+    .join(', ')
+
+  return `<h2>${escapeHtml(profile.title)} <span class="count">${escapeHtml(counts)}</span></h2>
+<p class="section-note">Checked against <a href="${escapeHtml(profile.url)}">${escapeHtml(
+    `${profile.title} version ${profile.version}`,
+  )}</a>, dated ${escapeHtml(profile.date)}. This compares the data fields of the SBOM opposite against the ones the guideline lists. It is <strong>not a conformity assessment</strong>, and several of the guideline's requirements are about your build process rather than about this file. Where cradle cannot know an answer it says so rather than guessing.</p>
+<div class="scroll"><table>
+<thead><tr><th>Status</th><th>Data field</th><th>Asked for</th><th>Detail</th></tr></thead>
+<tbody>
+${report.fields.map(profileRow).join('\n')}
+</tbody>
+</table></div>`
+}
+
+function profileRow(field: ProfileFieldResult): string {
+  return `<tr data-status="${escapeHtml(field.status)}">
+<td>${escapeHtml(PROFILE_STATUS[field.status])}</td>
+<td>${escapeHtml(field.title)}<br><span class="section-note">${escapeHtml(field.clause)} · <code>${escapeHtml(field.cyclonedx)}</code></span></td>
+<td>${escapeHtml(field.requirement)}</td>
+<td>${escapeHtml(field.detail)}${
+    field.status === 'met'
+      ? ''
+      : `<br><span class="section-note">${escapeHtml(field.nextStep)}</span>`
+  }</td>
+</tr>`
+}
 
 function findingsSection(input: ReportInput): string {
   const { findings, offline } = input

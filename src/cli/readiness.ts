@@ -70,6 +70,21 @@ export async function gatherReadiness(options: GatherOptions): Promise<Readiness
   return evaluateReadiness(input)
 }
 
+/**
+ * Who to name as the SBOM's creator. Only what the project actually configured —
+ * a fabricated creator would be worse than an absent one, and BSI TR-03183-2
+ * §5.2.1 wants a real contact.
+ */
+export function creatorFrom(
+  config: CradleConfig | undefined,
+): { name?: string; email?: string } | undefined {
+  if (config === undefined) return undefined
+  const creator: { name?: string; email?: string } = {}
+  if (config.productName !== undefined) creator.name = config.productName
+  if (config.contactEmail !== undefined) creator.email = config.contactEmail
+  return creator.name === undefined && creator.email === undefined ? undefined : creator
+}
+
 export async function readConfig(outputDir: string): Promise<CradleConfig | undefined> {
   const path = join(outputDir, 'config.json')
   if (!existsSync(path)) return undefined

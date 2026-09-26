@@ -99,6 +99,26 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   several packages would produce several documents claiming to be the same
   document.
 
+- **`--profile bsi-tr-03183`**, on both `scan` and `check`: the SBOM checked field
+  by field against **BSI TR-03183-2 version 2.1.0 (2025-08-20)**, the German
+  Federal Office for Information Security's SBOM guideline. Eighteen data fields
+  from §4, §5.2.1–§5.2.4 and §6.1, each citing the section it comes from and the
+  place the guideline's own mapping table puts it in CycloneDX 1.6. It appears as
+  its own report section and in `check --format github` (as notices) and
+  `--format markdown` (as a collapsed table).
+
+  It never changes the exit code. Several fields the guideline requires are
+  statements about your delivery — whether the shipped artefact is executable, an
+  archive, a structured file — and cradle will not guess them; a build that is
+  permanently red gets switched off. Those come back `not assessable` with the
+  reason, as does the component creator, which a lockfile simply does not record.
+  The verdict it is willing to give is "no required field is open", never
+  "compliant".
+
+  Two fields moved from unreachable to reachable: `metadata.manufacturer` is now
+  written from `contactEmail` in `.cradle/config.json` (§5.2.1), and
+  `bsi:component:filename` is derived from the resolved tarball URL (§5.2.2).
+
 ### Changed
 
 - **The documentation overstated OpenVEX conformance, and now says what is true.**

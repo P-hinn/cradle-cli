@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { CradleError } from '../core/errors.js'
+import { BSI_TR_03183_2, checkBsiProfile } from '../core/readiness/profiles/bsi-tr-03183.js'
 import { workspaceNames } from '../core/resolve/workspace.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
 import { expiringSoon } from '../core/vex/apply.js'
@@ -10,6 +11,7 @@ import type { VulnCache } from '../core/vulns/cache.js'
 import { countBySeverity } from '../core/vulns/findings.js'
 import { findingsWithoutFix, recommendUpgrades } from '../core/vulns/recommend.js'
 import { buildReport } from '../report/html.js'
+import { renderProfileText } from '../report/profile.js'
 import {
   ARTIFACT_SCHEMA_VERSION,
   type CycloneDxSpecVersion,
@@ -22,7 +24,7 @@ import {
 } from '../types/index.js'
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { runPipeline } from './pipeline.js'
-import { gatherReadiness } from './readiness.js'
+import { creatorFrom, gatherReadiness, readConfig } from './readiness.js'
 import { workspaceTarget } from './workspace-target.js'
 
 export const SCAN_HELP = `cradle scan — resolve dependencies, write an SBOM and look up vulnerabilities
@@ -36,6 +38,8 @@ Options:
   --no-cache               Do not read or write the local advisory cache
   --spec-version <1.6|1.7> CycloneDX version to emit (default: 1.6)
   --workspace <name|all>   Report on one workspace package, or one report each
+  --profile <name>         Add a profile section to the report. Currently:
+                           bsi-tr-03183 (BSI TR-03183-2 v2.1.0)
   --timestamp <iso>        Use this timestamp instead of now
   --serial-number <urn>    Use this SBOM serial number instead of a fresh UUID
   --output-dir <dir>       Where to write results (default: .cradle)
@@ -75,6 +79,7 @@ export async function runScan(
       'no-cache': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
       workspace: { type: 'string' },
+      profile: { type: 'string' },
       timestamp: { type: 'string' },
       'serial-number': { type: 'string' },
       'output-dir': { type: 'string' },
@@ -85,6 +90,14 @@ export async function runScan(
   if (values.help === true) {
     stdout.write(SCAN_HELP)
     return 0
+  }
+
+  const profileName = values.profile
+  if (profileName !== undefined && profileName !== BSI_TR_03183_2.id) {
+    throw new CradleError(
+      `Unknown --profile '${profileName}'`,
+      `The only profile cradle ships is ${BSI_TR_03183_2.id} (BSI TR-03183-2 v${BSI_TR_03183_2.version}).`,
+    )
   }
 
   const specVersion = values['spec-version']
@@ -135,6 +148,10 @@ export async function runScan(
   // A run stamps the current time and a fresh UUID by default, because a report
   // should say when it was made. Both are overridable so that a build can be
   // reproducible: same lockfile and same values in, byte-identical SBOM out.
+  // Read once, ahead of the loop: the creator is a property of the repository,
+  // not of a workspace package.
+  const rootConfig = await readConfig(outputDir)
+  const creator = creatorFrom(rootConfig)
   const timestamp = parseTimestamp(values.timestamp) ?? now().toISOString()
   const fixedSerial = parseSerialNumber(values['serial-number'])
 
@@ -171,7 +188,12 @@ export async function runScan(
 
   for (const target of targets) {
     const serialNumber = fixedSerial ?? dependencies.serialNumber?.() ?? `urn:uuid:${randomUUID()}`
-    const bom = buildBom(target.graph, { specVersion, timestamp, serialNumber })
+    const bom = buildBom(target.graph, {
+      specVersion,
+      timestamp,
+      serialNumber,
+      ...(creator === undefined ? {} : { creator }),
+    })
 
     const findingsDocument: FindingsDocument = {
       schemaVersion: ARTIFACT_SCHEMA_VERSION,
@@ -212,6 +234,13 @@ export async function runScan(
       ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
     })
 
+    // Checked against the document that is about to be written, not against the
+    // graph in memory: the profile is a statement about the file a reader gets.
+    const profile =
+      profileName === undefined
+        ? undefined
+        : checkBsiProfile({ bom, config: rootConfig ?? {}, offline })
+
     await writeFile(
       join(target.outputDir, 'report.html'),
       buildReport({
@@ -219,6 +248,7 @@ export async function runScan(
         findings: target.findings,
         suppressed: target.suppressed,
         readiness,
+        ...(profile === undefined ? {} : { profile }),
         timestamp,
         offline,
         specVersion,
@@ -244,6 +274,7 @@ export async function runScan(
         projectDir,
       }),
     )
+    if (profile !== undefined) stdout.write(renderProfileText(profile))
   }
   return 0
 }

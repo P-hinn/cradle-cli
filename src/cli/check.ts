@@ -9,8 +9,15 @@ import {
   toBaseline,
 } from '../core/baseline/diff.js'
 import { CradleError } from '../core/errors.js'
+import { BSI_TR_03183_2, checkBsiProfile } from '../core/readiness/profiles/bsi-tr-03183.js'
+import { buildBom } from '../core/sbom/cyclonedx.js'
 import { atOrAbove, severityRank } from '../core/vulns/severity.js'
 import { buildPullRequestComment } from '../report/markdown.js'
+import {
+  renderProfileAnnotations,
+  renderProfileMarkdown,
+  renderProfileText,
+} from '../report/profile.js'
 import {
   type BaselineDiff,
   type BaselineDocument,
@@ -21,6 +28,7 @@ import {
 import { TOOL_NAME, TOOL_VERSION } from '../version.generated.js'
 import { toAnnotations } from './github.js'
 import { type PipelineOptions, runPipeline } from './pipeline.js'
+import { creatorFrom, readConfig } from './readiness.js'
 import { workspaceTarget } from './workspace-target.js'
 
 export const CHECK_HELP = `cradle check — fail CI on findings that are new since the baseline
@@ -42,6 +50,8 @@ Options:
   --no-cache            Do not read or write the local advisory cache
   --workspace <name>    Gate one workspace package instead of the repository.
                         Its baseline lives in that package's own .cradle/
+  --profile <name>      Also check the SBOM field by field against a published
+                        profile. Currently: bsi-tr-03183 (BSI TR-03183-2 v2.1.0)
   --output-dir <dir>    Where .cradle files live (default: .cradle)
   -h, --help            Show this help
 
@@ -81,6 +91,7 @@ export async function runCheck(
       'artifact-name': { type: 'string' },
       offline: { type: 'boolean', default: false },
       workspace: { type: 'string' },
+      profile: { type: 'string' },
       'output-dir': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
@@ -89,6 +100,14 @@ export async function runCheck(
   if (values.help === true) {
     stdout.write(CHECK_HELP)
     return 0
+  }
+
+  const profile = values.profile
+  if (profile !== undefined && profile !== BSI_TR_03183_2.id) {
+    throw new CradleError(
+      `Unknown --profile '${profile}'`,
+      `The only profile cradle ships is ${BSI_TR_03183_2.id} (BSI TR-03183-2 v${BSI_TR_03183_2.version}).`,
+    )
   }
 
   const threshold = parseThreshold(values['fail-on'])
@@ -154,6 +173,8 @@ export async function runCheck(
 
   const result = { ...repo, ...target }
   const outputDir = target.outputDir
+  const config = await readConfig(rootOutputDir)
+  const creator = creatorFrom(config)
   const baselinePath = join(outputDir, 'baseline.json')
 
   // `--baseline` accepts what is there today and says nothing about pass or
@@ -177,6 +198,23 @@ export async function runCheck(
     return 0
   }
 
+  // The profile is a description of the SBOM, not a gate: it never changes the
+  // exit code. A field the guideline requires and cradle cannot know would
+  // otherwise make the build red forever, and the build would get switched off.
+  const profileReport =
+    profile === undefined
+      ? undefined
+      : checkBsiProfile({
+          bom: buildBom(result.graph, {
+            specVersion: '1.6',
+            timestamp: now.toISOString(),
+            serialNumber: `urn:uuid:${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}`,
+            ...(creator === undefined ? {} : { creator }),
+          }),
+          config: config ?? {},
+          offline: values.offline === true,
+        })
+
   const baseline = values['no-baseline'] === true ? undefined : await loadBaseline(baselinePath)
   const diff = diffAgainstBaseline(result.findings, baseline)
   // "never" reports everything and fails on nothing, for teams adopting the gate
@@ -192,6 +230,11 @@ export async function runCheck(
       ...(manifest === undefined ? {} : { manifest, manifestPath: 'package.json' }),
     })) {
       stdout.write(`${annotation}\n`)
+    }
+    if (profileReport !== undefined) {
+      for (const annotation of renderProfileAnnotations(profileReport)) {
+        stdout.write(`${annotation}\n`)
+      }
     }
   }
 
@@ -214,6 +257,7 @@ export async function runCheck(
         ...(values['artifact-name'] === undefined ? {} : { artifactName: values['artifact-name'] }),
       })}\n`,
     )
+    if (profileReport !== undefined) stdout.write(`${renderProfileMarkdown(profileReport)}\n`)
     return failing.length > 0 ? 1 : 0
   }
 
@@ -231,6 +275,7 @@ export async function runCheck(
       scope: result.graph.includeDev ? 'all dependencies' : 'production only',
     }),
   )
+  if (profileReport !== undefined) stdout.write(renderProfileText(profileReport))
 
   return failing.length > 0 ? 1 : 0
 }

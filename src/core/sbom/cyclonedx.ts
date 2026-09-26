@@ -3,6 +3,7 @@ import type {
   CdxComponent,
   CdxDependency,
   CdxExternalReference,
+  CdxOrganizationalEntity,
   CycloneDxSpecVersion,
   DependencyGraph,
   ResolvedComponent,
@@ -16,6 +17,13 @@ export interface BuildBomOptions {
   timestamp: string
   /** `urn:uuid:...`. Injectable for the same reason. */
   serialNumber: string
+  /**
+   * Who made this SBOM, from `.cradle/config.json`. Written into
+   * `metadata.manufacturer`, which is what BSI TR-03183-2 §5.2.1 asks for and
+   * what CycloneDX provides for it. Absent when the project configured nothing —
+   * inventing a creator would be worse than leaving the field out.
+   */
+  creator?: { name?: string; email?: string }
 }
 
 /**
@@ -44,6 +52,8 @@ export function buildBom(graph: DependencyGraph, options: BuildBomOptions): CdxB
   }
   dependencies.sort((a, b) => a.ref.localeCompare(b.ref))
 
+  const manufacturer = toManufacturer(options.creator)
+
   const rootComponent: CdxComponent = {
     'bom-ref': graph.root.bomRef,
     type: 'application',
@@ -62,6 +72,7 @@ export function buildBom(graph: DependencyGraph, options: BuildBomOptions): CdxB
     version: 1,
     metadata: {
       timestamp: options.timestamp,
+      ...(manufacturer === undefined ? {} : { manufacturer }),
       tools: {
         components: [
           {
@@ -82,6 +93,35 @@ export function buildBom(graph: DependencyGraph, options: BuildBomOptions): CdxB
     components,
     dependencies,
   }
+}
+
+/** An entity only when there is something real to put in it. */
+function toManufacturer(creator: BuildBomOptions['creator']): CdxOrganizationalEntity | undefined {
+  if (creator === undefined) return undefined
+  const entity: CdxOrganizationalEntity = {}
+  if (creator.name !== undefined && creator.name !== '') entity.name = creator.name
+  if (creator.email !== undefined && creator.email !== '') {
+    entity.contact = [{ email: creator.email }]
+  }
+  return entity.name === undefined && entity.contact === undefined ? undefined : entity
+}
+
+/**
+ * The tarball's own filename, which BSI TR-03183-2 §5.2.2 requires under the
+ * property name its mapping table defines. Derived from the resolved URL rather
+ * than guessed: a component fetched from git or a local path has none, and that
+ * is reported rather than filled in.
+ */
+function tarballFilename(resolvedUrl: string | undefined): string | undefined {
+  if (resolvedUrl === undefined) return undefined
+  let path: string
+  try {
+    path = new URL(resolvedUrl).pathname
+  } catch {
+    return undefined
+  }
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  return name === '' ? undefined : decodeURIComponent(name)
 }
 
 function toComponent(component: ResolvedComponent): CdxComponent {
@@ -112,6 +152,8 @@ function toComponent(component: ResolvedComponent): CdxComponent {
     { name: 'cradle:relationship', value: component.direct ? 'direct' : 'transitive' },
     { name: 'cradle:location', value: component.location },
   ]
+  const filename = tarballFilename(component.resolvedUrl)
+  if (filename !== undefined) properties.push({ name: 'bsi:component:filename', value: filename })
   if (component.workspace) properties.push({ name: 'cradle:workspace', value: 'true' })
   if (component.dev) properties.push({ name: 'cradle:dev', value: 'true' })
   if (component.licenseUnknown) properties.push({ name: 'cradle:licenseUnknown', value: 'true' })
