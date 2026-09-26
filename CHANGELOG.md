@@ -119,6 +119,24 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   written from `contactEmail` in `.cradle/config.json` (§5.2.1), and
   `bsi:component:filename` is derived from the resolved tarball URL (§5.2.2).
 
+- **`--sbom-format cyclonedx|spdx|both`** — SPDX 2.3 JSON as `sbom.spdx.json`,
+  from the same graph, with the same timestamp and the CycloneDX serial number in
+  its document namespace, so the two are visibly one scan. Validated against the
+  official SPDX 2.3 schema. Unknown fields say `NOASSERTION` and `filesAnalyzed`
+  is `false`, both honestly: cradle reads a lockfile and never the files inside a
+  package. A licence it could not map onto SPDX is `NOASSERTION` rather than an
+  invented `LicenseRef`.
+- **`--vex-format openvex|csaf|both`** — CSAF 2.0 in the VEX profile as
+  `vex.csaf.json`, from the same suppressions that produce `vex.json`; a second
+  rendering of one decision, never a second decision. The mapping is lossless
+  where it matters: CSAF's `flags[].label` enumerates exactly the five
+  justifications OpenVEX defines. Validated against the official CSAF schema, with
+  FIRST's CVSS schemas vendored alongside it so no test reaches the network.
+
+  With nothing suppressed, **no file is written**. The CSAF schema requires at
+  least one vulnerability and one product, so an empty document is not a CSAF
+  document — absent beats invalid, and the console says which.
+
 ### Changed
 
 - **The documentation overstated OpenVEX conformance, and now says what is true.**

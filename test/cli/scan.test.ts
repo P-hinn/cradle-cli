@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Writable } from 'node:stream'
@@ -262,5 +262,76 @@ describe('cradle — dispatch', () => {
   it('lists every command it actually has', async () => {
     const { out } = await run([])
     for (const command of ['scan', 'check', 'suppress']) expect(out).toContain(command)
+  })
+})
+
+describe('cradle scan --sbom-format and --vex-format', () => {
+  it('writes only CycloneDX and only OpenVEX by default', async () => {
+    const dir = await outputDir()
+    await run(['scan', fixture('npm-basic'), '--offline', '--output-dir', dir])
+    const written = await readdir(dir)
+    expect(written).toContain('sbom.cdx.json')
+    expect(written).not.toContain('sbom.spdx.json')
+    expect(written).not.toContain('vex.csaf.json')
+  })
+
+  it('writes both SBOM formats on request, from one scan', async () => {
+    const dir = await outputDir()
+    const { code } = await run([
+      'scan',
+      fixture('npm-basic'),
+      '--offline',
+      '--output-dir',
+      dir,
+      '--sbom-format',
+      'both',
+    ])
+    expect(code).toBe(0)
+
+    const cdx = JSON.parse(await readFile(join(dir, 'sbom.cdx.json'), 'utf8')) as CdxBom
+    const spdx = JSON.parse(await readFile(join(dir, 'sbom.spdx.json'), 'utf8')) as {
+      creationInfo: { created: string }
+      documentNamespace: string
+      packages: unknown[]
+    }
+
+    // One scan, two renderings: same moment, and the serial number ties them.
+    expect(spdx.creationInfo.created).toBe(cdx.metadata.timestamp)
+    expect(spdx.documentNamespace).toContain(cdx.serialNumber)
+    expect(spdx.packages).toHaveLength(cdx.components.length + 1)
+  })
+
+  it('writes no CSAF file when there is nothing to state', async () => {
+    // Rather than an empty one, which the CSAF schema does not accept.
+    const dir = await outputDir()
+    const { code, out } = await run([
+      'scan',
+      fixture('npm-basic'),
+      '--offline',
+      '--output-dir',
+      dir,
+      '--vex-format',
+      'both',
+    ])
+    expect(code).toBe(0)
+    expect(await readdir(dir)).not.toContain('vex.csaf.json')
+    expect(out).toContain('nothing suppressed')
+  })
+
+  it('refuses a format it does not have', async () => {
+    for (const [flag, value] of [
+      ['--sbom-format', 'swid'],
+      ['--vex-format', 'cyclonedx'],
+    ]) {
+      const { code, err } = await run([
+        'scan',
+        fixture('npm-basic'),
+        '--offline',
+        flag ?? '',
+        value ?? '',
+      ])
+      expect(code, flag).toBe(2)
+      expect(err, flag).toContain(`Unknown ${flag}`)
+    }
   })
 })

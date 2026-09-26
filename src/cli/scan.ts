@@ -6,7 +6,9 @@ import { CradleError } from '../core/errors.js'
 import { BSI_TR_03183_2, checkBsiProfile } from '../core/readiness/profiles/bsi-tr-03183.js'
 import { workspaceNames } from '../core/resolve/workspace.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
+import { buildSpdx } from '../core/sbom/spdx.js'
 import { expiringSoon } from '../core/vex/apply.js'
+import { buildCsaf } from '../core/vex/csaf.js'
 import type { VulnCache } from '../core/vulns/cache.js'
 import { countBySeverity } from '../core/vulns/findings.js'
 import { findingsWithoutFix, recommendUpgrades } from '../core/vulns/recommend.js'
@@ -37,6 +39,10 @@ Options:
   --offline                Skip the vulnerability lookup and mark the output offline
   --no-cache               Do not read or write the local advisory cache
   --spec-version <1.6|1.7> CycloneDX version to emit (default: 1.6)
+  --sbom-format <f>        cyclonedx (default), spdx, or both. SPDX 2.3 JSON is
+                           written as sbom.spdx.json
+  --vex-format <f>         openvex (default), csaf, or both. CSAF 2.0 VEX is
+                           written as vex.csaf.json, from the same statements
   --workspace <name|all>   Report on one workspace package, or one report each
   --profile <name>         Add a profile section to the report. Currently:
                            bsi-tr-03183 (BSI TR-03183-2 v2.1.0)
@@ -78,6 +84,8 @@ export async function runScan(
       // prefix support, so `cache: {...}` alone would reject `--no-cache`.
       'no-cache': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
+      'sbom-format': { type: 'string', default: 'cyclonedx' },
+      'vex-format': { type: 'string', default: 'openvex' },
       workspace: { type: 'string' },
       profile: { type: 'string' },
       timestamp: { type: 'string' },
@@ -99,6 +107,9 @@ export async function runScan(
       `The only profile cradle ships is ${BSI_TR_03183_2.id} (BSI TR-03183-2 v${BSI_TR_03183_2.version}).`,
     )
   }
+
+  const sbomFormats = parseFormats(values['sbom-format'], 'sbom-format', ['cyclonedx', 'spdx'])
+  const vexFormats = parseFormats(values['vex-format'], 'vex-format', ['openvex', 'csaf'])
 
   const specVersion = values['spec-version']
   if (!isSpecVersion(specVersion)) {
@@ -210,11 +221,52 @@ export async function runScan(
     }
 
     await mkdir(target.outputDir, { recursive: true })
-    await writeFile(
-      join(target.outputDir, 'sbom.cdx.json'),
-      `${JSON.stringify(bom, null, 2)}\n`,
-      'utf8',
-    )
+    if (sbomFormats.has('cyclonedx')) {
+      await writeFile(
+        join(target.outputDir, 'sbom.cdx.json'),
+        `${JSON.stringify(bom, null, 2)}\n`,
+        'utf8',
+      )
+    }
+    if (sbomFormats.has('spdx')) {
+      // Same graph, same timestamp, same serial number in the namespace: two
+      // renderings of one scan rather than two scans.
+      const spdx = buildSpdx(target.graph, {
+        timestamp,
+        serialNumber,
+        ...(creator === undefined ? {} : { creator }),
+      })
+      await writeFile(
+        join(target.outputDir, 'sbom.spdx.json'),
+        `${JSON.stringify(spdx, null, 2)}\n`,
+        'utf8',
+      )
+    }
+    let csafWritten = false
+    if (vexFormats.has('csaf')) {
+      // Only suppressed findings. An active finding is not a VEX statement, and
+      // a CSAF document that listed everything would be a vulnerability report -
+      // a different document with different obligations attached.
+      const csaf = buildCsaf(target.suppressed, {
+        publisher: {
+          name: rootConfig?.productName ?? target.graph.root.name,
+          namespace: csafNamespace(rootConfig?.contactEmail),
+        },
+        timestamp,
+        trackingId: `${target.graph.root.name}-${target.graph.root.version}-${serialNumber.slice('urn:uuid:'.length)}`,
+        product: { name: target.graph.root.name, version: target.graph.root.version },
+      })
+      // Absent rather than empty when nothing has been suppressed: a CSAF
+      // document needs at least one vulnerability to be a CSAF document.
+      if (csaf !== undefined) {
+        await writeFile(
+          join(target.outputDir, 'vex.csaf.json'),
+          `${JSON.stringify(csaf, null, 2)}\n`,
+          'utf8',
+        )
+      }
+      csafWritten = csaf !== undefined
+    }
     await writeFile(
       join(target.outputDir, 'findings.json'),
       `${JSON.stringify(findingsDocument, null, 2)}\n`,
@@ -272,6 +324,8 @@ export async function runScan(
         cacheHits,
         outputDir: target.outputDir,
         projectDir,
+        sbomFormats: [...sbomFormats].sort(),
+        csaf: vexFormats.has('csaf') ? (csafWritten ? 'written' : 'empty') : 'off',
       }),
     )
     if (profile !== undefined) stdout.write(renderProfileText(profile))
@@ -330,6 +384,36 @@ function parseSerialNumber(value: string | undefined): string | undefined {
   return value
 }
 
+/**
+ * Parse a `--*-format` value into the set of formats to write.
+ *
+ * `both` is spelled out rather than accepting a comma list, because two formats
+ * is the only combination there is and a list invites `cyclonedx,cyclonedx`.
+ */
+function parseFormats(
+  value: string | undefined,
+  flag: string,
+  allowed: readonly [string, string],
+): Set<string> {
+  if (value === 'both') return new Set(allowed)
+  if (value !== undefined && allowed.includes(value)) return new Set([value])
+  throw new CradleError(
+    `Unknown --${flag} '${value}'`,
+    `Use ${allowed[0]} (the default), ${allowed[1]}, or both.`,
+  )
+}
+
+/**
+ * CSAF requires a publisher namespace, which must be a URI identifying who is
+ * speaking. An email address is not one, so it becomes a mailto: URI; with
+ * nothing configured the document says so rather than naming somebody else.
+ */
+function csafNamespace(contactEmail: string | undefined): string {
+  return contactEmail === undefined
+    ? 'https://cradle.invalid/unconfigured'
+    : `mailto:${contactEmail}`
+}
+
 function isSpecVersion(value: string | undefined): value is CycloneDxSpecVersion {
   return SUPPORTED_SPEC_VERSIONS.includes(value as CycloneDxSpecVersion)
 }
@@ -346,6 +430,9 @@ interface SummaryInput {
   cacheHits: number
   outputDir: string
   projectDir: string
+  sbomFormats: string[]
+  /** Whether a CSAF file was asked for, and whether there was anything to put in it. */
+  csaf: 'off' | 'written' | 'empty'
 }
 
 function summarize(input: SummaryInput): string {
@@ -386,7 +473,14 @@ function summarize(input: SummaryInput): string {
   ].filter((part) => part !== '')
   lines.push(`  CRA checks   ${readinessParts.join(', ')}`)
   lines.push(`  Report       ${relative(join(input.outputDir, 'report.html'))}`)
-  lines.push(`  Output       ${relative(input.outputDir)}/ · CycloneDX ${input.specVersion}`)
+  const formats = input.sbomFormats
+    .map((format) => (format === 'cyclonedx' ? `CycloneDX ${input.specVersion}` : 'SPDX 2.3'))
+    .join(' + ')
+  lines.push(`  Output       ${relative(input.outputDir)}/ · ${formats}`)
+  if (input.csaf === 'written') lines.push('  CSAF         vex.csaf.json')
+  if (input.csaf === 'empty') {
+    lines.push('  CSAF         nothing suppressed, so no document was written')
+  }
   if (graph.workspaces.length > 0) {
     lines.push(`  Workspaces   ${graph.workspaces.length}: ${graph.workspaces.join(', ')}`)
   }

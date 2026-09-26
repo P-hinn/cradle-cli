@@ -123,3 +123,81 @@ export function cradleExtensionKeys(document: unknown): string[] {
   walk(document, '')
   return found.sort()
 }
+
+// ---------------------------------------------------------------------------
+// SPDX and CSAF
+// ---------------------------------------------------------------------------
+
+let spdxValidator: ValidateFunction | undefined
+let csafValidator: ValidateFunction | undefined
+
+/**
+ * Validate against the official SPDX 2.3 JSON schema, vendored from
+ * spdx/spdx-spec at tag v2.3. It declares draft-07, the same dialect the
+ * CycloneDX schemas use.
+ */
+export function validateSpdx(document: unknown): { valid: boolean; errors: string[] } {
+  spdxValidator ??= (() => {
+    const ajv = new Ajv({ strict: false, allErrors: true })
+    addFormats(ajv)
+    return ajv.compile(load('spdx-2.3.schema.json'))
+  })()
+  return report(spdxValidator, document)
+}
+
+/**
+ * Validate against the official CSAF 2.0 schema, vendored from oasis-tcs/csaf.
+ * Draft 2020-12, like OpenVEX.
+ */
+export function validateCsaf(document: unknown): { valid: boolean; errors: string[] } {
+  csafValidator ??= (() => {
+    const ajv = new Ajv2020({ strict: false, allErrors: true })
+    ;(ajvFormats as unknown as (instance: Ajv2020) => void)(ajv)
+    // CSAF references FIRST's CVSS schemas by absolute URL. They are vendored
+    // alongside it and registered under those URLs, so compiling does not reach
+    // the network - a test that fetches a schema fails when somebody else's site
+    // is down.
+    for (const version of ['2.0', '3.0', '3.1']) {
+      ajv.addSchema(
+        asDraft2020(load(`cvss-v${version}.schema.json`)),
+        `https://www.first.org/cvss/cvss-v${version}.json`,
+      )
+    }
+    return ajv.compile(load('csaf-2.0.schema.json'))
+  })()
+  return report(csafValidator, document)
+}
+
+/**
+ * Reinterpret a draft-04 schema as 2020-12.
+ *
+ * Two of FIRST's CVSS schemas still declare draft-04, which Ajv's 2020 entry
+ * point cannot compile. The conversion is safe **for these files specifically**:
+ * they use only `definitions`, `$ref`, enums and plain types, none of which
+ * changed meaning between the drafts. What did change — the boolean form of
+ * `exclusiveMinimum`, for one — does not appear in them.
+ *
+ * The vendored files are left byte-for-byte as published. They are evidence of
+ * what the schema said, and editing them in place would quietly turn that into
+ * evidence of what we decided it should say.
+ */
+function asDraft2020(schema: object): object {
+  const { $schema: _dropped, id, ...rest } = schema as Record<string, unknown> & { id?: string }
+  return {
+    ...rest,
+    // draft-04 spells it `id`, and carries a cache-busting query the CSAF
+    // references do not use.
+    ...(typeof id === 'string' ? { $id: id.split('?')[0] } : {}),
+  }
+}
+
+function report(
+  validate: ValidateFunction,
+  document: unknown,
+): { valid: boolean; errors: string[] } {
+  const valid = validate(document)
+  const errors = (validate.errors ?? []).map((e) =>
+    `${e.instancePath || '/'} ${e.message ?? ''} ${JSON.stringify(e.params)}`.trim(),
+  )
+  return { valid, errors }
+}

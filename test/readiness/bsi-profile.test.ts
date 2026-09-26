@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { resolveNpm } from '../../src/core/resolve/npm.js'
 import {
   BSI_FIELDS,
   BSI_TR_03183_2,
   checkBsiProfile,
   type ProfileInput,
 } from '../../src/core/readiness/profiles/bsi-tr-03183.js'
+import { resolveNpm } from '../../src/core/resolve/npm.js'
 import { buildBom } from '../../src/core/sbom/cyclonedx.js'
 import type { CdxBom } from '../../src/types/index.js'
 import { fixture } from '../support/fixtures.js'
@@ -17,10 +17,7 @@ const BASE = {
   serialNumber: 'urn:uuid:00000000-0000-4000-8000-000000000000',
 } as const
 
-async function bomFor(
-  name: string,
-  creator?: { name?: string; email?: string },
-): Promise<CdxBom> {
+async function bomFor(name: string, creator?: { name?: string; email?: string }): Promise<CdxBom> {
   const graph = await resolveNpm({ projectDir: fixture(name), includeDev: false })
   return buildBom(graph, { ...BASE, ...(creator === undefined ? {} : { creator }) })
 }
