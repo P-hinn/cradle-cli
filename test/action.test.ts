@@ -196,8 +196,34 @@ describe('release workflow', () => {
     // 0.1.3 published and then the release step failed. Fixing that should be a
     // re-run, not a burnt version number.
     const scripts = (RELEASE_JOB?.steps ?? []).map((step) => step.run ?? '').join('\n')
-    expect(scripts).toContain('already on the registry; skipping publish')
+    expect(scripts).toContain('already on the registry')
+    expect(scripts).toContain('skipping publish')
     expect(scripts).toContain('gh release view')
     expect(scripts).toContain('--clobber')
+  })
+
+  it('refuses to re-run against a commit other than the one it published', () => {
+    // The re-run above is only safe when it is the same code. If the tag has
+    // moved since the publish, rebuilding the assets would attach an SBOM and a
+    // report describing the new commit to a tarball built from the old one -
+    // evidence about something other than what shipped. npm records the
+    // publishing commit as gitHead, and that is what gets compared.
+    const scripts = (RELEASE_JOB?.steps ?? []).map((step) => step.run ?? '').join('\n')
+    expect(scripts).toContain('gitHead')
+    expect(scripts).toContain('GITHUB_SHA')
+  })
+
+  it('proves the evidence files exist before anything is published', () => {
+    // The two scans run with `|| true`, because a finding over the threshold is
+    // not a broken release. A crash looks identical from the exit code, so the
+    // files are checked - and checked in the scan step, because discovering a
+    // missing SBOM after the publish is how a version number gets burnt.
+    const steps = RELEASE_JOB?.steps ?? []
+    const scanIndex = steps.findIndex((step) => step.name?.includes('Scan cradle'))
+    const publishIndex = steps.findIndex((step) => step.name?.includes('Publish'))
+
+    expect(scanIndex).toBeGreaterThanOrEqual(0)
+    expect(scanIndex).toBeLessThan(publishIndex)
+    expect(steps[scanIndex]?.run).toContain('did not write')
   })
 })

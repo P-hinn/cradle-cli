@@ -61,9 +61,21 @@ jobs:
 
       - name: Scan cradle with cradle
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          # A non-zero exit here is a finding over the threshold, not a broken
+          # run, and a release is not the place to gate on that. But a crash
+          # would look identical, so the evidence files are checked instead of
+          # trusted - before the publish, because a missing SBOM used to be
+          # discovered only after the version was already on the registry.
           node dist/cli/index.js scan . || true
           node dist/cli/index.js scan . --include-dev --output-dir .cradle-dev || true
+
+          for file in .cradle/sbom.cdx.json .cradle/report.html .cradle-dev/sbom.cdx.json; do
+            if [ ! -s "$file" ]; then
+              echo "::error::cradle did not write ${file}; the scan failed rather than merely finding something."
+              exit 1
+            fi
+          done
 
       # No NODE_AUTH_TOKEN on purpose. Authentication is the OIDC exchange with
       # npm's trusted publisher for this repository and this workflow filename;
@@ -72,11 +84,27 @@ jobs:
       # Skipping an already-published version keeps the workflow re-runnable. A
       # release that fails after publishing but before the GitHub release should
       # be fixable by running it again, not by burning a version number.
+      #
+      # But skipping is only safe if the re-run is the same code. If the tag has
+      # been moved since the publish, the steps below would attach an SBOM and a
+      # report built from the new commit to a tarball built from the old one -
+      # evidence that describes something other than what was shipped. For a tool
+      # whose subject is supply-chain evidence that is the worst available
+      # outcome, so it is an error rather than a warning. npm records the
+      # publishing commit as gitHead; if it cannot be read, the match cannot be
+      # proven and that is equally an error.
       - name: Publish to npm with provenance
         run: |
           set -euo pipefail
           if npm view "${package}@${version}" version >/dev/null 2>&1; then
-            echo "::notice::${package}@${version} is already on the registry; skipping publish."
+            published=$(npm view "${package}@${version}" gitHead 2>/dev/null || true)
+            if [ "$published" != "$GITHUB_SHA" ]; then
+              echo "::error::${package}@${version} is already on the registry, published from commit ${published:-<unknown>}, but this run is ${GITHUB_SHA}."
+              echo "Re-running would attach an SBOM and a report from this commit to a tarball built from that one."
+              echo "A published version is final: bump the version and tag again rather than moving the tag."
+              exit 1
+            fi
+            echo "::notice::${package}@${version} is already on the registry, from this same commit; skipping publish."
             exit 0
           fi
           npm publish --provenance --access public
@@ -114,7 +142,9 @@ jobs:
           # Create or update, so a run that failed after the release was made can
           # simply be run again.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file "${RUNNER_TEMP}/notes.md"
+            # --draft=false as well: a run that failed while the release was
+            # still a draft should finish the job, not leave it invisible.
+            gh release edit "$TAG" --title "$TAG" --notes-file "${RUNNER_TEMP}/notes.md" --draft=false
           else
             gh release create "$TAG" \
               --title "$TAG" \
