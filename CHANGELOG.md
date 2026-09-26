@@ -195,6 +195,26 @@ while the project is pre-1.0, a minor bump may still change behaviour.
   name, no version, nothing about the project. `SECURITY.md` records both new
   destinations.
 
+- **`check --format sarif`** — SARIF 2.1.0, which GitHub Code Scanning and
+  GitLab's security dashboard both ingest, so neither needs a cradle-specific
+  integration. Validated against the official schema. A direct dependency anchors
+  to its line in `package.json`, where an annotation sits next to something you
+  can change; a transitive one anchors to the lockfile rather than guessing a
+  line. Fingerprints are advisory plus package name **without** the version, the
+  same identity the baseline uses, so a patch bump of a still-vulnerable package
+  does not reopen a dismissal.
+
+  `security-severity` carries the computed CVSS base score where one exists and
+  the band's midpoint where it does not — with the help text saying which, because
+  a midpoint is a stand-in and 7.4 would look like a measurement. An offline run
+  reports `executionSuccessful: false`, so a dashboard can tell "we looked and
+  found nothing" from "we did not look".
+- **`examples/gitlab-ci.yml`** — evidence, gate and merge-request comment, with the
+  SBOM and SARIF uploaded as GitLab reports. It separates the scan from the gate
+  because GitLab only ingests a security report from a job that passed, and it
+  distinguishes exit 1 from exit 2 explicitly so a broken pipeline never reads as
+  a vulnerability. Linked from the README next to the GitHub Action.
+
 ### Changed
 
 - **The Article 14 final-report deadline is stated correctly now.** The README and

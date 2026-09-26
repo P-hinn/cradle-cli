@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
+import { COMMENT_MARKER } from '../src/report/markdown.js'
 
 interface Step {
   name?: string
@@ -286,5 +287,50 @@ describe('dependabot', () => {
     // that it produces findings. Updating it would defeat the example.
     const directories = config.updates.map((update) => update.directory)
     expect(directories.every((directory) => directory === '/')).toBe(true)
+  })
+})
+
+describe('the GitLab CI example', () => {
+  const raw = readFileSync(new URL('../examples/gitlab-ci.yml', import.meta.url), 'utf8')
+  const config = parse(raw) as Record<
+    string,
+    { script?: string[]; artifacts?: Record<string, unknown> }
+  >
+
+  it('separates the evidence job from the gate', () => {
+    // They want different failure behaviour: the scan must pass for GitLab to
+    // ingest a security report at all, including on a day the gate is red.
+    expect(Object.keys(config)).toContain('cradle-scan')
+    expect(Object.keys(config)).toContain('cradle-check')
+  })
+
+  it('tells 1 from 2, so a broken tool is not a security result', () => {
+    const script = (config['cradle-check']?.script ?? []).join('\n')
+    expect(script).toContain('set +e')
+    expect(script).toContain('-eq 2')
+    expect(script).toContain('not a security finding')
+  })
+
+  it('declares the SARIF report GitLab ingests', () => {
+    const reports = config['cradle-check']?.artifacts?.reports as Record<string, string> | undefined
+    expect(reports?.sarif).toBe('gl-cradle-sarif.json')
+  })
+
+  it('pins the tool version rather than tracking a range', () => {
+    // A moving version in CI is a pipeline that changes its mind about your
+    // dependencies without anyone deciding to.
+    const variables = (parse(raw) as { variables: Record<string, string> }).variables
+    expect(variables.CRADLE_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(raw).toContain('cradle-cli@${CRADLE_VERSION}')
+  })
+
+  it('uses the same comment marker the tool writes', () => {
+    // Or the merge request collects one note per push and nobody reads them.
+    expect(raw).toContain(COMMENT_MARKER)
+  })
+
+  it('skips the comment job rather than failing when no token is set', () => {
+    const rules = (config['cradle-comment'] as { rules?: { if?: string }[] } | undefined)?.rules
+    expect(rules?.[0]?.if).toContain('CRADLE_MR_TOKEN')
   })
 })

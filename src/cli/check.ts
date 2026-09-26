@@ -20,6 +20,7 @@ import {
   renderProfileMarkdown,
   renderProfileText,
 } from '../report/profile.js'
+import { buildSarif } from '../report/sarif.js'
 import {
   type BaselineDiff,
   type BaselineDocument,
@@ -45,7 +46,8 @@ Options:
                         baseline. Exits 0.
   --no-baseline         Ignore the baseline and judge every finding as new
   --format <style>      text (default), github for workflow-command
-                        annotations, or markdown for a pull-request comment
+                        annotations, markdown for a pull-request comment, or
+                        sarif for GitHub Code Scanning and GitLab
   --artifact-name <n>   Named in the markdown output as where the full report
                         was uploaded
   --include-dev         Include development dependencies
@@ -138,11 +140,11 @@ export async function runCheck(
 
   const threshold = parseThreshold(values['fail-on'])
   const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'github' && format !== 'markdown') {
+  if (format !== 'text' && format !== 'github' && format !== 'markdown' && format !== 'sarif') {
     throw new CradleError(
       `Unknown --format '${format}'`,
-      'Use --format text (the default), github for workflow annotations, or markdown for a ' +
-        'pull-request comment.',
+      'Use --format text (the default), github for workflow annotations, markdown for a ' +
+        'pull-request comment, or sarif for GitHub Code Scanning and GitLab.',
     )
   }
 
@@ -265,6 +267,25 @@ export async function runCheck(
     }
   }
 
+  // SARIF is the whole output too, and it reports **every** finding rather than
+  // only what is new. A security dashboard is an inventory, not a diff: its job
+  // is to show the current state, and the baseline's job is to decide what fails
+  // the build. Feeding it only the new ones would make a dismissed finding
+  // disappear from the dashboard rather than stay dismissed.
+  if (format === 'sarif') {
+    const manifest = await readManifest(projectDir)
+    const sarif = buildSarif([...result.findings, ...result.suppressed], {
+      toolName: TOOL_NAME,
+      toolVersion: TOOL_VERSION,
+      ...(manifest === undefined ? {} : { manifest, manifestPath: 'package.json' }),
+      lockfilePath: lockfileFor(result.graph.packageManager),
+      offline: values.offline === true,
+      unavailable: result.priorityUnavailable,
+    })
+    stdout.write(`${JSON.stringify(sarif, null, 2)}\n`)
+    return failing.length > 0 ? 1 : 0
+  }
+
   // Markdown is the whole output, not an addition to it: the action pipes this
   // straight into a pull-request comment.
   if (format === 'markdown') {
@@ -308,6 +329,13 @@ export async function runCheck(
   if (profileReport !== undefined) stdout.write(renderProfileText(profileReport))
 
   return failing.length > 0 ? 1 : 0
+}
+
+/** Where a transitive finding anchors, since it is declared in no manifest. */
+function lockfileFor(manager: string): string {
+  if (manager === 'pnpm') return 'pnpm-lock.yaml'
+  if (manager === 'yarn-classic' || manager === 'yarn-berry') return 'yarn.lock'
+  return 'package-lock.json'
 }
 
 function parseThreshold(value: string | undefined): Severity | 'never' {

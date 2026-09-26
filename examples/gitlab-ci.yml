@@ -1,0 +1,171 @@
+# cradle on GitLab CI
+#
+# Copy this into `.gitlab-ci.yml`, or include it:
+#
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/P-hinn/cradle-cli/main/examples/gitlab-ci.yml'
+#
+# Two jobs, because they answer different questions and want different failure
+# behaviour. `cradle-scan` produces the evidence and should not fail on findings;
+# `cradle-check` is the gate.
+#
+# Three things are worth knowing before you copy it.
+#
+# **The exit codes are the contract.** 0 nothing new above the threshold, 1 new
+# findings above it, 2 cradle could not run. A broken tool must never read as a
+# security result, so the gate job below distinguishes them explicitly instead of
+# letting any non-zero exit mean "vulnerable".
+#
+# **SARIF ingestion needs GitLab 19.2 or newer.** It shipped behind a flag in
+# 18.11, was on by default in 19.1, and became generally available in 19.2. On an
+# older GitLab, drop the `reports:` block and keep the plain artifacts — you lose
+# the Security tab, not the evidence.
+#
+# **Findings are ingested only when the job succeeds.** GitLab always uploads the
+# artifact but only reads a security report from a passing job, which is the other
+# reason the scan and the gate are separate: the scan has to pass for the
+# dashboard to update, even on a day when the gate is red.
+
+stages:
+  - build
+  - test
+
+variables:
+  # Pin the tool, not a range. A moving version in CI means a pipeline that
+  # changes its mind about your dependencies without anyone deciding to.
+  CRADLE_VERSION: '0.1.3'
+  # Where the gate goes red. One of: critical, high, medium, low, never.
+  CRADLE_FAIL_ON: 'high'
+
+.cradle:
+  image: node:22-alpine
+  before_script:
+    # `npm ci` rather than `npm install`: cradle reads the lockfile, and a
+    # pipeline that resolves a slightly different tree describes something other
+    # than what you ship.
+    - npm ci --ignore-scripts
+
+# ---------------------------------------------------------------------------
+# Evidence
+# ---------------------------------------------------------------------------
+
+cradle-scan:
+  extends: .cradle
+  stage: build
+  script:
+    # Everything an auditor asks for, in one command: the CycloneDX SBOM, the
+    # findings with their route through the tree, the HTML report, and the
+    # Article 14 templates if you ever need them.
+    - npx "cradle-cli@${CRADLE_VERSION}" scan
+        --sbom-format both
+        --vex-format both
+        --profile bsi-tr-03183
+  artifacts:
+    # A year, because Annex VII keeps technical documentation for ten and a
+    # pipeline artifact is not the place to do that -- but long enough that last
+    # quarter's evidence is still there when somebody asks.
+    expire_in: 1 year
+    when: always
+    paths:
+      - .cradle/report.html
+      - .cradle/sbom.cdx.json
+      - .cradle/sbom.spdx.json
+      - .cradle/findings.json
+      # Written only when something has been suppressed; a CSAF document needs at
+      # least one statement to be a CSAF document.
+      - .cradle/vex.csaf.json
+    # GitLab renders this as a browsable report on the job page.
+    reports:
+      cyclonedx: .cradle/sbom.cdx.json
+
+# ---------------------------------------------------------------------------
+# The gate
+# ---------------------------------------------------------------------------
+
+cradle-check:
+  extends: .cradle
+  stage: test
+  script:
+    # set +e, because the exit code *is* the result. Letting the shell abort on
+    # it would lose the distinction between 1 and 2.
+    - set +e
+    - |
+      npx "cradle-cli@${CRADLE_VERSION}" check \
+        --fail-on "${CRADLE_FAIL_ON}" \
+        --sort exploit \
+        --format sarif > gl-cradle-sarif.json
+      status=$?
+    - |
+      if [ "$status" -eq 2 ]; then
+        echo "cradle could not run. This is a broken pipeline, not a security finding."
+        exit 2
+      fi
+    # The human-readable version, for the job log. Runs from the cache the
+    # previous invocation filled, so it costs one request rather than a second
+    # scan.
+    - |
+      npx "cradle-cli@${CRADLE_VERSION}" check \
+        --fail-on "${CRADLE_FAIL_ON}" \
+        --sort exploit || true
+    - exit "$status"
+  artifacts:
+    when: always
+    expire_in: 1 month
+    paths:
+      - gl-cradle-sarif.json
+    reports:
+      # GitLab 19.2 or newer. Findings appear in the pipeline Security tab, the
+      # security dashboard and the vulnerability report.
+      sarif: gl-cradle-sarif.json
+  # Allowed to fail on a project that is adopting the gate: the findings still
+  # reach the dashboard, and the pipeline stays green while the backlog is worked
+  # down. Remove this once `cradle check --baseline` has been committed.
+  allow_failure: true
+
+# ---------------------------------------------------------------------------
+# Comment on the merge request
+# ---------------------------------------------------------------------------
+#
+# Optional, and it needs a token, so it is off by default. cradle renders the
+# comment itself -- `check --format markdown` prints the whole body -- so the
+# tool needs no write access to GitLab and this job does the posting.
+#
+# Set CRADLE_MR_TOKEN to a project access token with the `api` scope. Without it
+# the job is skipped rather than failing, because a missing token is a setup
+# choice and not an error.
+
+cradle-comment:
+  extends: .cradle
+  stage: test
+  rules:
+    - if: $CI_MERGE_REQUEST_IID && $CRADLE_MR_TOKEN
+  script:
+    - apk add --no-cache curl jq
+    - |
+      npx "cradle-cli@${CRADLE_VERSION}" check \
+        --fail-on "${CRADLE_FAIL_ON}" \
+        --format markdown \
+        --artifact-name cradle-scan > comment.md || true
+    # Edit the existing note rather than adding one. A merge request that
+    # collects a comment per push is a merge request where nobody reads the
+    # comments -- the marker is how the previous one is found.
+    - |
+      marker='<!-- cradle-cli:report -->'
+      api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${CI_MERGE_REQUEST_IID}/notes"
+      existing=$(curl -sf --header "PRIVATE-TOKEN: ${CRADLE_MR_TOKEN}" "${api}?per_page=100" \
+        | jq -r --arg marker "$marker" 'map(select(.body | contains($marker))) | .[0].id // empty')
+
+      if [ -n "$existing" ]; then
+        curl -sf --request PUT \
+          --header "PRIVATE-TOKEN: ${CRADLE_MR_TOKEN}" \
+          --form "body=<comment.md" \
+          "${api}/${existing}" > /dev/null
+        echo "Updated note ${existing}."
+      else
+        curl -sf --request POST \
+          --header "PRIVATE-TOKEN: ${CRADLE_MR_TOKEN}" \
+          --form "body=<comment.md" \
+          "${api}" > /dev/null
+        echo "Posted a new note."
+      fi
+  needs: []

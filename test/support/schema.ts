@@ -130,6 +130,7 @@ export function cradleExtensionKeys(document: unknown): string[] {
 
 let spdxValidator: ValidateFunction | undefined
 let csafValidator: ValidateFunction | undefined
+let sarifValidator: ValidateFunction | undefined
 
 /**
  * Validate against the official SPDX 2.3 JSON schema, vendored from
@@ -200,4 +201,18 @@ function report(
     `${e.instancePath || '/'} ${e.message ?? ''} ${JSON.stringify(e.params)}`.trim(),
   )
   return { valid, errors }
+}
+
+/**
+ * Validate against the official SARIF 2.1.0 schema, vendored from
+ * oasis-tcs/sarif-spec. It declares draft-04, which is reinterpreted the same way
+ * the CVSS schemas are — see asDraft2020.
+ */
+export function validateSarif(document: unknown): { valid: boolean; errors: string[] } {
+  sarifValidator ??= (() => {
+    const ajv = new Ajv2020({ strict: false, allErrors: true })
+    ;(ajvFormats as unknown as (instance: Ajv2020) => void)(ajv)
+    return ajv.compile(asDraft2020(load('sarif-2.1.0.schema.json')))
+  })()
+  return report(sarifValidator, document)
 }

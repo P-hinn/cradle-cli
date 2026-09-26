@@ -140,6 +140,10 @@ The action scans, checks against the baseline, uploads the report as a build
 artifact, and **edits one pull-request comment in place** rather than adding a
 new one on every push.
 
+For GitLab, [`examples/gitlab-ci.yml`](examples/gitlab-ci.yml) does the same
+three things — evidence, gate, merge-request comment — and feeds the Security
+dashboard through `check --format sarif`.
+
 Pin the exact tag while the project is pre-1.0. The action's default
 `cradle-cli` version is the release it was cut from, so a pinned tag means a
 pinned tool. A moving `v1` will exist once there is a 1.0 worth moving.
