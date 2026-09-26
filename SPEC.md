@@ -14,7 +14,7 @@ Designentscheidungen. Bei Widerspruch gilt dieses Dokument.
 - **Binary:** `cradle`
 - **Repo:** `github.com/P-hinn/cradle-cli`
 - **Lizenz:** Apache-2.0
-- **Stand:** 28.08.2026
+- **Stand:** 26.09.2026 (Abschnitte 1–12 bis 0.1.3; 13–19 danach)
 
 ---
 
@@ -595,11 +595,16 @@ Projekt ausgeführt.
 Gehört so ins README, damit klar ist: Absicht, keine Lücke.
 
 - Andere Ökosysteme als npm (kein Python, kein Go, keine Container)
-- SPDX als Ausgabeformat (kommt später, CycloneDX reicht für den Anfang)
-- Signierte Attestationen, Sigstore, SLSA
+- ~~SPDX als Ausgabeformat~~ — **seit §18.2 vorhanden** (`--sbom-format spdx`,
+  SPDX 2.3). Der Eintrag bleibt durchgestrichen stehen, statt gelöscht zu werden:
+  eine Abgrenzung, die später fällt, ist Teil der Entscheidungsgeschichte.
+- Signierte Attestationen, Sigstore, SLSA. Der npm-Publish trägt eine
+  Provenance-Attestation; cradle signiert nichts vom Nutzer.
 - Eine Weboberfläche oder ein gehosteter Dienst
 - Automatische Pull Requests für Updates (das macht Dependabot besser)
 - Lizenz-Policy-Enforcement (nur anzeigen, nicht blockieren)
+- **Die Feststellung, ob eine Schwachstelle aktiv ausgenutzt wird**, und damit ob
+  eine Meldepflicht nach Art. 14 besteht (§18.4, §18.5)
 
 ---
 
@@ -1237,3 +1242,91 @@ Plattformen eine cradle-spezifische Integration.
 liest einen Security-Report **nur aus einem erfolgreichen Job**, der Scan muss
 also grün bleiben, auch an einem Tag, an dem das Gate rot ist. Das Gate liest den
 Exit-Code explizit, statt jedes Nicht-Null als „verwundbar" zu lesen.
+
+## 19. Stand nach Phase 4
+
+### 19.1 Was sich an den Grundentscheidungen geändert hat
+
+Die Leitprinzipien aus §2 stehen unverändert. Drei Einträge in §4 und §7 sind
+überholt und oben entsprechend markiert:
+
+| War | Ist |
+|---|---|
+| „Ein Report pro Repo. `--workspace` später." | `--workspace <name\|all>` umgesetzt (§16) |
+| „SPDX als Ausgabeformat: kommt später" | `--sbom-format spdx` umgesetzt (§18.2) |
+| „Abschlussbericht binnen 14 Tagen" | 14 Tage **ab Verfügbarkeit einer Maßnahme** (§3.2-Korrektur) |
+
+**Keine neue Runtime-Dependency.** Die vier aus §4.1 sind unverändert: alles in
+den Phasen 1–4 ist mit `node:`-Modulen, `fetch` und den vorhandenen vier gebaut.
+Neu hinzugekommen sind ausschließlich **Dev**-Abhängigkeiten in Form vendorter
+Schemata unter `schema/` — CycloneDX 1.6/1.7, OpenVEX 0.2.0, SPDX 2.3, CSAF 2.0,
+SARIF 2.1.0 und FIRSTs drei CVSS-Schemata. Das ist Absicht: ein Test, der ein
+Schema aus dem Netz zieht, fällt aus, wenn die Seite eines Dritten ausfällt.
+
+**Keine Telemetrie.** Unverändert und dauerhaft. Zwei neue Netzziele sind
+hinzugekommen (`api.first.org`, `www.cisa.gov`, §18.5); beide erhalten
+ausschließlich CVE-Kennungen, beide sind in `SECURITY.md` und im README
+verzeichnet, beide sind über `--offline` oder `--no-priority` abschaltbar.
+
+### 19.2 Die Regel, die sich durch alles zieht
+
+In jeder der vier Phasen ist dieselbe Entscheidung mehrfach wiedergekehrt, und
+sie ist der eigentliche rote Faden dieses Dokuments:
+
+> **Eine plausibel aussehende falsche Antwort ist schlechter als eine
+> ausdrückliche Nicht-Antwort.**
+
+Ausprägungen, jeweils mit Abschnitt:
+
+* Yarn Berrys `checksum` wird nicht als SHA-512 ausgegeben (§6.1).
+* Ein Lockfile-Shape, das nicht abbildbar ist, wird gemeldet statt verworfen
+  (§15.1).
+* pnpm lässt eine Komponente weg, deren Version nur ein Ort ist, statt eine purl
+  zu erfinden (§15.3).
+* Das BSI-Profil sagt `not assessable` statt zu raten, und nie „compliant"
+  (§18.1).
+* Ein leeres CSAF-Dokument wird nicht geschrieben (§18.2).
+* Die deutsche Übersetzung mildert keine Einschränkung ab (§18.3).
+* `notify` stellt nicht fest, dass gemeldet werden muss (§18.4).
+* Ein Finding ohne CVE zeigt „keine Daten", nicht Null (§18.5).
+* SARIF meldet `executionSuccessful: false` für einen Offline-Lauf (§18.6).
+* Der Release-Workflow bricht ab, statt Evidenz an ein fremdes Commit zu hängen
+  (§14).
+
+### 19.3 Testbestand
+
+897 Tests. Die drei, die am meisten Fehler gefunden haben:
+
+1. **Der Corpus** (§ test/corpus) — fand den pnpm-Monorepo-Fehler am Tag seiner
+   Entstehung, über eine unabhängig aus der Lockfile gezählte Komponentenzahl.
+2. **Die Randfall-Fixtures** (§15) — sieben echte Fehler, davon drei zuvor durch
+   *falsch geratene* Fixtures verdeckt. Deshalb trägt jedes Fixture jetzt eine
+   README mit Herkunft.
+3. **Der Report-Fuzz** (§ test/report/fuzz) — 30 Payloads durch alle Textfelder
+   gleichzeitig. Gegenprobe dokumentiert: Quote-Escaping entfernt ⇒ fünf Tests
+   rot, darunter echtes Attribut-Breakout-XSS.
+
+### 19.4 Bekannte, bewusst offene Punkte
+
+Vollständige Liste dessen, was nicht gelöst ist:
+
+* **devDependencies eines Workspace-Mitglieds zählen als Produktion.** Der
+  gemeinsame Graph hat kein Per-Kante-dev-Flag; npm machte es so, pnpm zieht nach
+  (§16, Parität nach §6.1). Fachlich diskutabel — was ein Mitglied für den Build
+  braucht, wird nicht ausgeliefert.
+* **`cradle:expires` bricht die strenge OpenVEX-Validierung** (§16 in CHANGELOG,
+  Korrektur in §6.3). Der Trade steht im README; ohne `--expires` validiert die
+  Datei exakt.
+* **SPDX-Export ist 2.3, BSI TR-03183-2 §4 verlangt ≥ 3.0.1** (§18.1). Die
+  CycloneDX-1.6-Ausgabe erfüllt die Formatanforderung.
+* **`compositions[].aggregate` wird nicht geschrieben** (§18.1,
+  `component-dependencies` ist `partial`). Vollständigkeit hängt am Build, nicht
+  an der Lockfile.
+* **`check --workspace all` gibt es nicht** und wird ausdrücklich verweigert
+  (§16.6).
+* **Actions werden auf `@vN` gepinnt, nicht auf SHA** (§13.2). Kostet einen
+  Scorecard-Unterpunkt.
+* **Die Art.-14-Feldlisten** stammen aus dem Verordnungstext über
+  Sekundärquellen; EUR-Lex lieferte bei der Recherche HTTP 202. Fristen und
+  Meldeweg sind über die Kommissionsseite abgesichert, die Feldinhalte pro Stufe
+  sollten fachlich gegengelesen werden.

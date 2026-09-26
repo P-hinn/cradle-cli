@@ -5,6 +5,12 @@ while the project is pre-1.0, a minor bump may still change behaviour.
 
 ## Unreleased
 
+Four areas: the repository's own CI and release integrity, robustness of the
+lockfile parsers under real input, the exports and profiles German and EU teams
+are asked for, and a translated report. Nothing here changes the default output
+of `cradle scan` except two additional SBOM fields and a resolution-notes section
+that is absent for an ordinary project.
+
 ### Added
 
 - **Continuous integration.** `.github/workflows/ci.yml` runs the full gate —
