@@ -550,7 +550,7 @@ steps:
   - uses: actions/checkout@v5
   - uses: actions/setup-node@v5
     with: { node-version: '22' }
-  - uses: P-hinn/cradle-cli@v0.1.3
+  - uses: P-hinn/cradle-cli@v0.2.0
     with:
       fail-on: high
       upload-artifact: true
