@@ -3,7 +3,7 @@
 Notable changes, newest first. Versions follow [semantic versioning](https://semver.org);
 while the project is pre-1.0, a minor bump may still change behaviour.
 
-## Unreleased
+## 0.2.0 — 2026-09-27
 
 Four areas: the repository's own CI and release integrity, robustness of the
 lockfile parsers under real input, the exports and profiles German and EU teams
