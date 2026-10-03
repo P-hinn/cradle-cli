@@ -171,7 +171,18 @@ export interface Strings {
 
   markdown: {
     /** The one-line verdict at the top, which is what most readers read. */
-    verdictFailing: (count: number, threshold: string) => string
+    /** `gate` already reads as a phrase, e.g. "at or above high". */
+    verdictFailing: (count: number, gate: string) => string
+    /**
+     * The gate can fail on severity, on active exploitation, or on an EPSS
+     * probability, and a comment that named only the severity would misdescribe
+     * why a finding was caught.
+     */
+    thresholdSeverity: (severity: string) => string
+    thresholdKev: string
+    thresholdEpss: (percent: string) => string
+    /** Joins the active thresholds into one phrase. */
+    thresholdJoin: (parts: string[]) => string
     verdictNewBelowThreshold: (count: number) => string
     verdictClean: string
     subtitle: (components: number, manager: string, scope: string) => string

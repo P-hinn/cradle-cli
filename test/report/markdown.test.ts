@@ -42,7 +42,7 @@ function comment(overrides: Partial<PullRequestCommentInput> = {}): string {
     diff: diff(),
     suppressed: 0,
     failing: [],
-    threshold: 'high',
+    thresholds: { severity: 'high', kev: false },
     hasBaseline: true,
     toolName: 'cradle-cli',
     toolVersion: '0.0.0',

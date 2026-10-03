@@ -214,8 +214,15 @@ export const de: Strings = {
   },
 
   markdown: {
-    verdictFailing: (count, threshold) =>
-      `❌ ${count} ${count === 1 ? 'neues Finding' : 'neue Findings'} ab Schwere ${threshold}`,
+    verdictFailing: (count, gate) =>
+      `❌ ${count} ${count === 1 ? 'neues Finding' : 'neue Findings'} ${gate}`,
+    thresholdSeverity: (severity) => `ab Schwere ${severity}`,
+    thresholdKev: 'nachweislich ausgenutzt',
+    thresholdEpss: (percent) => `EPSS ab ${percent}`,
+    thresholdJoin: (parts) =>
+      parts.length <= 1
+        ? (parts[0] ?? '')
+        : `${parts.slice(0, -1).join(', ')} oder ${parts.at(-1)}`,
     verdictNewBelowThreshold: (count) =>
       `⚠️ ${count} ${count === 1 ? 'neues Finding' : 'neue Findings'}, keines über der Schwelle`,
     verdictClean: '✅ Nichts Neues seit der Baseline',

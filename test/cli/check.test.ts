@@ -259,3 +259,73 @@ describe('cradle check — github format', () => {
     expect(err).toContain("Unknown --format 'junit'")
   })
 })
+
+describe('cradle check — the exploit gate', () => {
+  it('fails on an exploited finding the severity threshold would let through', async () => {
+    // CVE-2020-8203 is a high, and the fake CISA catalogue lists it. Raising the
+    // severity bar past it leaves --fail-on-kev as the only thing that catches it.
+    const dir = await project('npm-vulnerable')
+    const severityOnly = await run(['check', dir, '--fail-on', 'critical'])
+    const withKev = await run(['check', dir, '--fail-on', 'critical', '--fail-on-kev'])
+
+    expect(withKev.code).toBe(1)
+    expect(withKev.out).toContain('GHSA-p6mc-m468-83gw')
+    expect(severityOnly.out).not.toContain('— exploited')
+  })
+
+  it('can gate on exploitation alone', async () => {
+    const dir = await project('npm-vulnerable')
+    const { code, out } = await run(['check', dir, '--fail-on', 'never', '--fail-on-kev'])
+
+    expect(code).toBe(1)
+    expect(out).toContain('Failing: 1 new finding known to be exploited')
+    expect(out).toContain('— exploited')
+  })
+
+  it('names which threshold caught each finding', async () => {
+    // Severity says how bad it would be, KEV says someone is doing it. A reader
+    // acts differently on each, so "failed" on its own is not an answer.
+    const dir = await project('npm-vulnerable')
+    const { out } = await run(['check', dir, '--fail-on', 'high', '--fail-on-kev'])
+    expect(out).toMatch(/GHSA-p6mc-m468-83gw.*— severity \+ exploited/)
+  })
+
+  it('gates on an EPSS probability', async () => {
+    const dir = await project('npm-vulnerable')
+    const caught = await run(['check', dir, '--fail-on', 'never', '--fail-on-epss', '0.04'])
+    const missed = await run(['check', dir, '--fail-on', 'never', '--fail-on-epss', '0.9'])
+
+    expect(caught.code).toBe(1)
+    expect(caught.out).toContain('— EPSS')
+    expect(missed.code).toBe(0)
+    expect(missed.out).toContain('nothing new is EPSS at or above 90%')
+  })
+
+  it('rejects a probability that is not one', async () => {
+    const dir = await project('npm-vulnerable')
+    const { code, err } = await run(['check', dir, '--fail-on-epss', '50'])
+    expect(code).toBe(2)
+    expect(err).toContain('between 0 and 1')
+  })
+
+  it.each(['--offline', '--no-priority'])(
+    'refuses to gate on a signal %s switches off',
+    async (flag) => {
+      // Gating on a signal that was never fetched would report a clean run
+      // rather than an unanswerable one.
+      const dir = await project('npm-vulnerable')
+      const { code, err } = await run(['check', dir, flag, '--fail-on-kev'])
+      expect(code).toBe(2)
+      expect(err).toContain(flag)
+      expect(err).toContain('exploit signals')
+    },
+  )
+
+  it('leaves the default gate on severity alone', async () => {
+    const dir = await project('npm-vulnerable')
+    const { code, out } = await run(['check', dir])
+    expect(code).toBe(1)
+    expect(out).toContain('at or above high')
+    expect(out).not.toContain('known to be exploited')
+  })
+})

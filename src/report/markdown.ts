@@ -1,6 +1,26 @@
+import type { GateThresholds } from '../core/vulns/gate.js'
 import { severityRank } from '../core/vulns/severity.js'
-import type { BaselineDiff, Finding, Severity } from '../types/index.js'
+import type { BaselineDiff, Finding } from '../types/index.js'
 import { type Language, type Strings, strings } from './i18n/index.js'
+
+/**
+ * The gate's thresholds as a phrase, in the reader's language.
+ *
+ * core's describeThresholds does the same for the console, which is English
+ * only. The two are deliberately separate rather than one function reaching
+ * into the string table: core has no business knowing about languages.
+ */
+function describeGate(thresholds: GateThresholds, t: Strings): string {
+  const parts: string[] = []
+  if (thresholds.severity !== 'never') {
+    parts.push(t.markdown.thresholdSeverity(t.severity[thresholds.severity]))
+  }
+  if (thresholds.kev) parts.push(t.markdown.thresholdKev)
+  if (thresholds.epss !== undefined) {
+    parts.push(t.markdown.thresholdEpss(`${(thresholds.epss * 100).toFixed(0)}%`))
+  }
+  return t.markdown.thresholdJoin(parts)
+}
 
 /**
  * The marker that makes the pull-request comment idempotent.
@@ -21,9 +41,9 @@ export interface PullRequestCommentInput {
   componentCount: number
   diff: BaselineDiff
   suppressed: number
-  /** Findings that are new *and* at or above the gate's threshold. */
+  /** Findings that are new *and* caught by one of the gate's thresholds. */
   failing: readonly Finding[]
-  threshold: Severity | 'never'
+  thresholds: GateThresholds
   hasBaseline: boolean
   toolName: string
   toolVersion: string
@@ -118,8 +138,7 @@ export function buildPullRequestComment(input: PullRequestCommentInput): string 
 
 function verdict(input: PullRequestCommentInput, t: Strings): string {
   if (input.failing.length > 0) {
-    const threshold = input.threshold === 'never' ? input.threshold : t.severity[input.threshold]
-    return t.markdown.verdictFailing(input.failing.length, threshold)
+    return t.markdown.verdictFailing(input.failing.length, describeGate(input.thresholds, t))
   }
   if (input.diff.added.length > 0) {
     return t.markdown.verdictNewBelowThreshold(input.diff.added.length)

@@ -397,11 +397,35 @@ as a column in the report and a line in `check`, and this ordering puts
 known-exploited first — a medium CISA has evidence about ahead of a critical
 nobody has touched, which is the opposite of what sorting by severity says.
 
-**`--fail-on` stays CVSS-based.** A gate whose threshold moves daily with
-somebody else's model goes red overnight for reasons nobody on your team changed.
-These order the work; the threshold decides what blocks. `--no-priority` turns
-them off without going fully offline, and only CVE identifiers are ever sent —
-no package name, no version, nothing about your project.
+**`--fail-on` stays CVSS-based, and is still the default on its own.** A gate
+whose threshold moves daily with somebody else's model goes red overnight for
+reasons nobody on your team changed. `--no-priority` turns the signals off
+without going fully offline, and only CVE identifiers are ever sent — no package
+name, no version, nothing about your project.
+
+Two opt-in flags add the other dimensions, because severity alone asks the wrong
+question for Article 14 — its 24-hour clock starts on *actively exploited*, not
+on a score:
+
+```bash
+npx cradle-cli check --fail-on never --fail-on-kev    # only active exploitation
+npx cradle-cli check --fail-on high --fail-on-epss 0.5
+```
+
+A finding fails on any threshold it crosses, and the output names which one,
+because a KEV hit is an upgrade today while a severity hit may be a decision to
+record.
+
+The two are not equally well behaved, and the paragraph above is the reason.
+**`--fail-on-kev` is the safe one**: the catalogue only grows, and an entry means
+CISA has evidence someone is exploiting it — going red on that is the point.
+**`--fail-on-epss` is the one that bites**: the model re-scores daily, so a build
+that passed yesterday can fail today with nothing on your side changed. Use it
+knowing that.
+
+Gating on either while `--offline` or `--no-priority` switches the lookup off is
+refused rather than silently passing. A gate that cannot see is worse than no
+gate.
 
 ---
 
@@ -414,7 +438,8 @@ cradle scan      [path] [--include-dev] [--offline] [--no-cache] [--no-priority]
                         [--workspace <name|all>] [--profile bsi-tr-03183]
                         [--timestamp <iso>] [--serial-number <urn>]
                         [--output-dir <dir>]
-cradle check     [path] [--fail-on <severity>] [--baseline] [--no-baseline]
+cradle check     [path] [--fail-on <severity>] [--fail-on-kev] [--fail-on-epss <0-1>]
+                        [--baseline] [--no-baseline]
                         [--format text|github|markdown|sarif] [--sort severity|exploit]
                         [--workspace <name>] [--profile bsi-tr-03183] [--lang en|de]
                         [--artifact-name <name>] [--no-priority] [--output-dir <dir>]

@@ -192,8 +192,13 @@ export const en: Strings = {
   },
 
   markdown: {
-    verdictFailing: (count, threshold) =>
-      `❌ ${count} new ${count === 1 ? 'finding' : 'findings'} at or above ${threshold}`,
+    verdictFailing: (count, gate) =>
+      `❌ ${count} new ${count === 1 ? 'finding' : 'findings'} ${gate}`,
+    thresholdSeverity: (severity) => `at or above ${severity}`,
+    thresholdKev: 'known to be exploited',
+    thresholdEpss: (percent) => `EPSS at or above ${percent}`,
+    thresholdJoin: (parts) =>
+      parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} or ${parts.at(-1)}`,
     verdictNewBelowThreshold: (count) =>
       `⚠️ ${count} new ${count === 1 ? 'finding' : 'findings'}, none above the threshold`,
     verdictClean: '✅ Nothing new since the baseline',

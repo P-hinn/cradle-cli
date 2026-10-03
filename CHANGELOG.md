@@ -3,6 +3,28 @@
 Notable changes, newest first. Versions follow [semantic versioning](https://semver.org);
 while the project is pre-1.0, a minor bump may still change behaviour.
 
+## Unreleased
+
+### Added
+
+- **The gate can fail on active exploitation, not only on severity.**
+  `--fail-on-kev` fails on anything in CISA's Known Exploited Vulnerabilities
+  catalogue whatever its score, and `--fail-on-epss <0-1>` on an exploitation
+  probability. Both are additive to `--fail-on`, so a finding fails on any
+  threshold it crosses and the output names which one — a KEV hit is an upgrade
+  today, a severity hit may be a decision to record. `--fail-on never
+  --fail-on-kev` is the gate that reacts to nothing else.
+
+  The signals were already fetched, shown and sortable; what was missing was the
+  ability to *stop a build* on the one that Article 14's 24-hour clock actually
+  starts on. The README keeps its warning that EPSS re-scores daily, now scoped
+  to the flag it applies to: KEV only grows, EPSS can turn a passing build red
+  overnight.
+
+  Asking to gate on a signal that `--offline` or `--no-priority` switches off is
+  refused with exit 2. A gate that cannot see would otherwise report a clean run
+  rather than an unanswerable one.
+
 ## 0.2.0 — 2026-09-27
 
 Four areas: the repository's own CI and release integrity, robustness of the

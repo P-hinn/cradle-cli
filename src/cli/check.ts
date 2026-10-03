@@ -11,8 +11,16 @@ import {
 import { CradleError } from '../core/errors.js'
 import { BSI_TR_03183_2, checkBsiProfile } from '../core/readiness/profiles/bsi-tr-03183.js'
 import { buildBom } from '../core/sbom/cyclonedx.js'
+import {
+  describeReasons,
+  describeThresholds,
+  failingFindings,
+  type GateFailure,
+  type GateThresholds,
+  gateIsOff,
+} from '../core/vulns/gate.js'
 import { byExploitPriority } from '../core/vulns/priority.js'
-import { atOrAbove, severityRank } from '../core/vulns/severity.js'
+import { severityRank } from '../core/vulns/severity.js'
 import { isLanguage, LANGUAGES } from '../report/i18n/index.js'
 import { buildPullRequestComment } from '../report/markdown.js'
 import {
@@ -42,6 +50,10 @@ Usage:
 Options:
   --fail-on <severity>  Fail at or above this severity (default: high).
                         One of: ${SEVERITY_ORDER.join(', ')}, never
+  --fail-on-kev         Also fail on anything CISA records as being exploited,
+                        whatever its severity. Article 14's 24-hour clock starts
+                        on active exploitation, not on a CVSS score
+  --fail-on-epss <0-1>  Also fail at or above this EPSS probability, e.g. 0.5
   --baseline            Accept the current findings and write them as the new
                         baseline. Exits 0.
   --no-baseline         Ignore the baseline and judge every finding as new
@@ -88,6 +100,11 @@ export async function runCheck(
     allowPositionals: true,
     options: {
       'fail-on': { type: 'string', default: 'high' },
+      // Additive to --fail-on, not alternatives to it: a finding fails on any
+      // threshold it crosses. `--fail-on never --fail-on-kev` is the gate that
+      // only reacts to active exploitation.
+      'fail-on-kev': { type: 'boolean', default: false },
+      'fail-on-epss': { type: 'string' },
       // --baseline and --no-baseline are not opposites here: one writes the
       // baseline, the other ignores it. They are declared as two literal
       // options because node's parseArgs has no --no- prefix support anyway.
@@ -138,7 +155,25 @@ export async function runCheck(
     )
   }
 
-  const threshold = parseThreshold(values['fail-on'])
+  const thresholds: GateThresholds = {
+    severity: parseThreshold(values['fail-on']),
+    kev: values['fail-on-kev'] === true,
+    ...(values['fail-on-epss'] === undefined ? {} : { epss: parseEpss(values['fail-on-epss']) }),
+  }
+
+  // Gating on a signal the run is not allowed to fetch would pass silently, and
+  // a gate that cannot see is worse than no gate.
+  if (thresholds.kev || thresholds.epss !== undefined) {
+    const disabled =
+      values.offline === true ? '--offline' : values['no-priority'] === true ? '--no-priority' : ''
+    if (disabled !== '') {
+      throw new CradleError(
+        `--fail-on-kev and --fail-on-epss need the exploit signals that ${disabled} switches off`,
+        'Drop one or the other. Gating on a signal that was never fetched would report ' +
+          'a clean run rather than an unanswerable one.',
+      )
+    }
+  }
   const format = values.format ?? 'text'
   if (format !== 'text' && format !== 'github' && format !== 'markdown' && format !== 'sarif') {
     throw new CradleError(
@@ -248,10 +283,8 @@ export async function runCheck(
   const diff = diffAgainstBaseline(result.findings, baseline)
   // "never" reports everything and fails on nothing, for teams adopting the gate
   // gradually.
-  const failing =
-    threshold === 'never'
-      ? []
-      : diff.added.filter((finding) => atOrAbove(finding.severity, threshold))
+  const failures = failingFindings(diff.added, thresholds)
+  const failing = failures.map((failure) => failure.finding)
 
   if (format === 'github') {
     const manifest = await readManifest(projectDir)
@@ -298,7 +331,7 @@ export async function runCheck(
         diff,
         suppressed: result.suppressed.length,
         failing,
-        threshold,
+        thresholds,
         hasBaseline: baseline !== undefined,
         toolName: TOOL_NAME,
         toolVersion: TOOL_VERSION,
@@ -314,7 +347,8 @@ export async function runCheck(
     summarize({
       diff,
       failing,
-      threshold,
+      failures,
+      thresholds,
       baseline,
       baselinePath,
       projectDir,
@@ -349,6 +383,18 @@ function parseThreshold(value: string | undefined): Severity | 'never' {
   )
 }
 
+/** EPSS is a probability, so the flag takes one: 0.5, not 50. */
+function parseEpss(value: string): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+    throw new CradleError(
+      `--fail-on-epss expects a probability between 0 and 1, got '${value}'`,
+      'EPSS is the chance of exploitation in the next 30 days. Half of that is 0.5.',
+    )
+  }
+  return parsed
+}
+
 async function loadBaseline(path: string): Promise<BaselineDocument | undefined> {
   if (!existsSync(path)) return undefined
   return parseBaseline(await readFile(path, 'utf8'), path)
@@ -369,7 +415,8 @@ function relative(path: string, projectDir: string): string {
 interface SummaryInput {
   diff: BaselineDiff
   failing: Finding[]
-  threshold: Severity | 'never'
+  failures: GateFailure[]
+  thresholds: GateThresholds
   baseline: BaselineDocument | undefined
   baselinePath: string
   projectDir: string
@@ -433,9 +480,9 @@ function summarize(input: SummaryInput): string {
   if (input.suppressed > 0) lines.push(`  Suppressed   ${input.suppressed} by VEX statements`)
   lines.push(
     `  New          ${diff.added.length}` +
-      (input.threshold === 'never'
+      (gateIsOff(input.thresholds)
         ? ''
-        : `, ${input.failing.length} at or above ${input.threshold}`),
+        : `, ${input.failing.length} ${describeThresholds(input.thresholds)}`),
   )
   lines.push('')
 
@@ -483,14 +530,23 @@ function summarize(input: SummaryInput): string {
     lines.push('')
   }
 
-  if (input.failing.length > 0) {
+  if (input.failures.length > 0) {
     lines.push(
-      `  Failing: ${input.failing.length} new ${input.failing.length === 1 ? 'finding' : 'findings'} ` +
-        `at or above ${input.threshold}.`,
+      `  Failing: ${input.failures.length} new ${input.failures.length === 1 ? 'finding' : 'findings'} ` +
+        `${describeThresholds(input.thresholds)}.`,
     )
+    // Which threshold caught each one, because that changes what to do about it.
+    for (const failure of input.failures) {
+      lines.push(
+        `    ${failure.finding.id}  ${failure.finding.component.name} ` +
+          `${failure.finding.component.version}  — ${describeReasons(failure.reasons)}`,
+      )
+    }
   } else if (diff.added.length > 0) {
     lines.push(
-      `  Passing: nothing new reaches ${input.threshold === 'never' ? 'the threshold' : input.threshold}.`,
+      gateIsOff(input.thresholds)
+        ? '  Passing: the gate is off, so nothing fails.'
+        : `  Passing: nothing new is ${describeThresholds(input.thresholds)}.`,
     )
   } else {
     lines.push('  Passing: nothing new since the baseline.')
