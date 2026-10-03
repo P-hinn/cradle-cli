@@ -39,6 +39,8 @@ Options:
   --include-dev            Include development dependencies (default: production only)
   --offline                Skip the vulnerability lookup and mark the output offline
   --no-cache               Do not read or write the local advisory cache
+  --from-sbom <file>       Read the dependency graph from a CycloneDX file
+                           instead of resolving a lockfile
   --no-priority            Skip the EPSS and CISA KEV lookup. --offline already
                            does; this keeps the advisories without the extras
   --spec-version <1.6|1.7> CycloneDX version to emit (default: 1.6)
@@ -87,6 +89,7 @@ export async function runScan(
       // Declared literally, not as a negation: node's parseArgs has no --no-
       // prefix support, so `cache: {...}` alone would reject `--no-cache`.
       'no-cache': { type: 'boolean', default: false },
+      'from-sbom': { type: 'string' },
       'no-priority': { type: 'boolean', default: false },
       'spec-version': { type: 'string', default: '1.6' },
       'sbom-format': { type: 'string', default: 'cyclonedx' },
@@ -174,6 +177,7 @@ export async function runScan(
     offline,
     useCache: values['no-cache'] !== true,
     now: now(),
+    ...(values['from-sbom'] === undefined ? {} : { fromSbom: resolve(values['from-sbom']) }),
     ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
     ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
   })
@@ -235,6 +239,7 @@ export async function runScan(
       project: { name: target.graph.root.name, version: target.graph.root.version },
       scope: includeDev ? 'all' : 'production',
       packageManager: target.graph.packageManager,
+      ...(target.graph.source === undefined ? {} : { source: target.graph.source }),
       offline,
       componentCount: target.graph.components.length,
       findings: target.findings,
@@ -468,7 +473,8 @@ function summarize(input: SummaryInput): string {
 
   const lines = [
     '',
-    `cradle ${TOOL_VERSION} · ${graph.root.name} ${graph.root.version} · ${graph.packageManager} · ` +
+    `cradle ${TOOL_VERSION} · ${graph.root.name} ${graph.root.version} · ` +
+      `${graph.source === undefined ? graph.packageManager : `from ${relative(graph.source.path)}`} · ` +
       `${graph.includeDev ? 'all dependencies' : 'production only'}`,
     '',
     `  Components   ${graph.components.length} (${direct} direct, ${graph.components.length - direct} transitive)`,

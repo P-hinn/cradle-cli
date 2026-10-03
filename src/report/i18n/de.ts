@@ -167,6 +167,8 @@ export const de: Strings = {
       'patched-dependency': 'Vom Paketmanager gepatcht',
       'unresolved-dependency': 'Deklariert, aber nicht in der Lockfile',
       'bundled-dependency': 'Im übergeordneten Paket enthalten',
+      'non-npm-component': 'Aus einem anderen Ökosystem',
+      'unidentified-component': 'Aus dem SBOM nicht identifizierbar',
     },
   },
 

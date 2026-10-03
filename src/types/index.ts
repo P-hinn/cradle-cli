@@ -104,6 +104,10 @@ export type ResolveNoteKind =
   | 'unresolved-dependency'
   /** Shipped inside its parent's tarball rather than fetched separately. */
   | 'bundled-dependency'
+  /** In a supplied SBOM but from another ecosystem, so OSV cannot be asked about it. */
+  | 'non-npm-component'
+  /** In a supplied SBOM without enough identity — no purl, or no version — to match. */
+  | 'unidentified-component'
 
 export interface ResolveNote {
   kind: ResolveNoteKind
@@ -117,6 +121,12 @@ export interface ResolveNote {
 
 export interface DependencyGraph {
   packageManager: PackageManager
+  /**
+   * Where the graph came from. Absent means a lockfile, which is the ordinary
+   * case. An SBOM-sourced graph describes what someone else resolved, and output
+   * that says "resolved from the lockfile" would be wrong about it.
+   */
+  source?: { kind: 'sbom'; path: string }
   /** Absolute path of the scanned project. */
   projectDir: string
   root: RootComponent
@@ -283,6 +293,12 @@ export interface FindingsDocument {
   project: { name: string; version: string }
   scope: 'production' | 'all'
   packageManager: PackageManager
+  /**
+   * Set when the graph was read from a supplied SBOM rather than resolved from a
+   * lockfile. The Article 14 draft has to say which, because "resolved from the
+   * npm lockfile" would be false about a supplier's document.
+   */
+  source?: { kind: 'sbom'; path: string }
   /** True when the vulnerability lookup was skipped entirely. */
   offline: boolean
   componentCount: number

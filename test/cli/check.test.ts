@@ -329,3 +329,52 @@ describe('cradle check — the exploit gate', () => {
     expect(out).not.toContain('known to be exploited')
   })
 })
+
+describe('cradle check — --from-sbom', () => {
+  it('checks a shipped product whose lockfile is gone', async () => {
+    // The case the feature exists for: the repository has moved on, but the SBOM
+    // in the technical documentation is what was placed on the market, and the
+    // support period obliges someone to keep watching that.
+    const dir = await project('npm-vulnerable')
+    await run(['scan', dir])
+
+    const shipped = join(dir, 'shipped.cdx.json')
+    await cp(join(dir, '.cradle', 'sbom.cdx.json'), shipped)
+    await rm(join(dir, 'package-lock.json'))
+
+    const { code, out } = await run(['check', dir, '--from-sbom', shipped])
+    expect(code).toBe(1)
+    expect(out).toContain('Findings     8')
+  })
+
+  it('finds the same findings from the SBOM as from the lockfile', async () => {
+    const dir = await project('npm-vulnerable')
+    await run(['scan', dir])
+    const shipped = join(dir, 'shipped.cdx.json')
+    await cp(join(dir, '.cradle', 'sbom.cdx.json'), shipped)
+
+    const fromLockfile = await run(['check', dir, '--fail-on', 'never'])
+    const fromSbom = await run(['check', dir, '--from-sbom', shipped, '--fail-on', 'never'])
+
+    const advisories = (text: string) => [...text.matchAll(/GHSA-[\w-]+/g)].map((m) => m[0]).sort()
+    expect(advisories(fromSbom.out)).toEqual(advisories(fromLockfile.out))
+  })
+
+  it('says where the graph came from instead of naming a package manager', async () => {
+    // A supplied document says nothing about the tool that installed anything.
+    const dir = await project('npm-vulnerable')
+    await run(['scan', dir])
+    const shipped = join(dir, 'shipped.cdx.json')
+    await cp(join(dir, '.cradle', 'sbom.cdx.json'), shipped)
+
+    const { out } = await run(['scan', dir, '--from-sbom', shipped, '--output-dir', 'from-sbom'])
+    expect(out).toContain('from shipped.cdx.json')
+  })
+
+  it('reports a file it cannot read rather than falling back to the lockfile', async () => {
+    const dir = await project('npm-vulnerable')
+    const { code, err } = await run(['check', dir, '--from-sbom', join(dir, 'absent.cdx.json')])
+    expect(code).toBe(2)
+    expect(err).toContain('Could not read')
+  })
+})

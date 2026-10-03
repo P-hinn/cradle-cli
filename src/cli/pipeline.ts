@@ -6,6 +6,7 @@ import { detectPackageManager } from '../core/resolve/detect.js'
 import { resolveNpm } from '../core/resolve/npm.js'
 import { resolvePnpm } from '../core/resolve/pnpm.js'
 import { resolveYarn } from '../core/resolve/yarn.js'
+import { readCycloneDx } from '../core/sbom/read.js'
 import { applyVex } from '../core/vex/apply.js'
 import { parseDocument } from '../core/vex/document.js'
 import { NULL_CACHE, type VulnCache } from '../core/vulns/cache.js'
@@ -37,6 +38,11 @@ export interface PipelineOptions {
   useCache: boolean
   now: Date
   /**
+   * Read the dependency graph from this CycloneDX file instead of resolving a
+   * lockfile. For a shipped product whose tree is frozen, or a supplier's SBOM.
+   */
+  fromSbom?: string
+  /**
    * Skip the EPSS and CISA KEV lookup. Off by default; `--offline` implies it,
    * and so does `--no-priority` for a run that wants the advisories without two
    * more network destinations.
@@ -67,8 +73,13 @@ export interface PipelineResult {
 }
 
 export async function runPipeline(options: PipelineOptions): Promise<PipelineResult> {
-  const detection = await detectPackageManager(options.projectDir)
-  const graph = await resolveTree(detection.manager, options, detection.lockfile)
+  let graph: DependencyGraph
+  if (options.fromSbom === undefined) {
+    const detection = await detectPackageManager(options.projectDir)
+    graph = await resolveTree(detection.manager, options, detection.lockfile)
+  } else {
+    graph = await readGraphFromSbom(options.fromSbom, options.projectDir)
+  }
 
   let findings: Finding[] = []
   let cacheHits = 0
@@ -134,6 +145,16 @@ export async function loadVex(outputDir: string): Promise<VexDocument | undefine
   const path = join(outputDir, 'vex.json')
   if (!existsSync(path)) return undefined
   return parseDocument(await readFile(path, 'utf8'), path)
+}
+
+async function readGraphFromSbom(path: string, projectDir: string): Promise<DependencyGraph> {
+  let raw: string
+  try {
+    raw = await readFile(path, 'utf8')
+  } catch (cause) {
+    throw new CradleError(`Could not read ${path}`, 'Check the path to the SBOM.', { cause })
+  }
+  return readCycloneDx(raw, { projectDir, path })
 }
 
 async function resolveTree(

@@ -73,6 +73,8 @@ export interface NotifyInput {
   /** ISO 8601, for the document's own date. */
   timestamp: string
   packageManager: string
+  /** Set when the graph came from a supplied SBOM rather than a lockfile. */
+  source?: { kind: 'sbom'; path: string }
 }
 
 /** Marks a field only the manufacturer can answer. Deliberately hard to miss. */
@@ -219,7 +221,11 @@ function product(input: NotifyInput): string {
     `Product: **${name}**, version ${input.project.version}.\n\n` +
     `The affected component is \`${input.finding.component.name}\` ` +
     `${input.finding.component.version}, reached as \`${input.finding.path.join(' › ')}\` ` +
-    `(resolved from the ${input.packageManager} lockfile).`
+    `${
+      input.source === undefined
+        ? `(resolved from the ${input.packageManager} lockfile).`
+        : '(read from the supplied software bill of materials, not resolved from a lockfile).'
+    }`
   )
 }
 

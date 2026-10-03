@@ -7,6 +7,26 @@ while the project is pre-1.0, a minor bump may still change behaviour.
 
 ### Added
 
+- **`--from-sbom <file>`: check a CycloneDX document instead of a lockfile.**
+  A lockfile describes what the repository resolves today. A product that has
+  shipped has a frozen tree, and the SBOM in its technical documentation is what
+  was placed on the market — the thing the support period obliges someone to keep
+  watching. A supplier's SBOM is often the only description of their component
+  that exists. Neither has a lockfile to read.
+
+  The graph is the same shape a lockfile produces, so findings, VEX, the baseline
+  and the report work on it unchanged. `scan` takes the flag too, which doubles
+  as a converter from CycloneDX to SPDX.
+
+  What a supplied document cannot support is reported rather than guessed:
+  a component from another ecosystem, or one with no package URL, becomes a
+  resolution note with advice specific to which of the two it is. Output says
+  `from <file>` where it would otherwise name a package manager, and the Article
+  14 draft says *read from the supplied software bill of materials* rather than
+  *resolved from the npm lockfile* — a false provenance sentence in a regulatory
+  document is not a detail. The purl is rebuilt from name and version rather than
+  trusted, since every later advisory match depends on it.
+
 - **The gate can fail on active exploitation, not only on severity.**
   `--fail-on-kev` fails on anything in CISA's Known Exploited Vulnerabilities
   catalogue whatever its score, and `--fail-on-epss <0-1>` on an exploitation

@@ -429,16 +429,50 @@ gate.
 
 ---
 
+## Checking an SBOM instead of a lockfile
+
+```bash
+npx cradle-cli check --from-sbom shipped.cdx.json
+```
+
+A lockfile describes what your repository resolves **today**. Two things it
+cannot describe:
+
+- **A product that has shipped.** Its tree is frozen, the lockfile has moved on,
+  and the SBOM in your technical documentation is what was placed on the market.
+  That is the one the support period obliges you to keep watching.
+- **A supplier's component.** Their SBOM is often the only description of it you
+  will ever have, and you have no lockfile for it at all.
+
+Both read as CycloneDX JSON and produce the same graph a lockfile does, so
+findings, VEX, the baseline and the report work on them unchanged. `scan` takes
+the flag too, which doubles as a converter: read CycloneDX, write SPDX.
+
+What the document cannot support is said rather than guessed. A component from
+another ecosystem, or one without a package URL, is counted and then reported as
+a resolution note — cradle only knows npm, and a component count that silently
+shrank would still look complete. Output says `from <file>` where it would
+otherwise name a package manager, because a supplied document claims nothing
+about the tool that installed anything. For the same reason the Article 14 draft
+says *read from the supplied software bill of materials* instead of *resolved
+from the npm lockfile*.
+
+SPDX is write-only for now: cradle emits it, and cannot read it back.
+
+---
+
 ## Commands
 
 ```
-cradle scan      [path] [--include-dev] [--offline] [--no-cache] [--no-priority]
+cradle scan      [path] [--from-sbom <file>] [--include-dev] [--offline] [--no-cache]
+                        [--no-priority]
                         [--spec-version 1.6|1.7] [--sbom-format cyclonedx|spdx|both]
                         [--vex-format openvex|csaf|both] [--lang en|de]
                         [--workspace <name|all>] [--profile bsi-tr-03183]
                         [--timestamp <iso>] [--serial-number <urn>]
                         [--output-dir <dir>]
-cradle check     [path] [--fail-on <severity>] [--fail-on-kev] [--fail-on-epss <0-1>]
+cradle check     [path] [--from-sbom <file>]
+                        [--fail-on <severity>] [--fail-on-kev] [--fail-on-epss <0-1>]
                         [--baseline] [--no-baseline]
                         [--format text|github|markdown|sarif] [--sort severity|exploit]
                         [--workspace <name>] [--profile bsi-tr-03183] [--lang en|de]

@@ -89,6 +89,7 @@ export async function runNotify(
     project: document.project,
     timestamp: now.toISOString(),
     packageManager: document.packageManager,
+    ...(document.source === undefined ? {} : { source: document.source }),
   })
 
   const outstanding = countPlaceholders(markdown)

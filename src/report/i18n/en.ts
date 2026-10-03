@@ -145,6 +145,8 @@ export const en: Strings = {
       'patched-dependency': 'Patched by the package manager',
       'unresolved-dependency': 'Declared but not in the lockfile',
       'bundled-dependency': 'Bundled inside its parent',
+      'non-npm-component': 'From another ecosystem',
+      'unidentified-component': 'Not identifiable from the SBOM',
     },
   },
 

@@ -64,6 +64,8 @@ Options:
                         was uploaded
   --include-dev         Include development dependencies
   --no-cache            Do not read or write the local advisory cache
+  --from-sbom <file>    Check a CycloneDX document instead of a lockfile — a
+                        shipped product's frozen tree, or a supplier's SBOM
   --no-priority         Skip the EPSS and CISA KEV lookup
   --sort <order>        severity (default) or exploit, which puts what CISA
                         knows is being exploited first, then EPSS, then severity
@@ -113,6 +115,7 @@ export async function runCheck(
       format: { type: 'string', default: 'text' },
       'include-dev': { type: 'boolean', default: false },
       'no-cache': { type: 'boolean', default: false },
+      'from-sbom': { type: 'string' },
       'no-priority': { type: 'boolean', default: false },
       sort: { type: 'string', default: 'severity' },
       'artifact-name': { type: 'string' },
@@ -210,6 +213,7 @@ export async function runCheck(
     useCache: values['no-cache'] !== true,
     noPriority: values['no-priority'] === true,
     now,
+    ...(values['from-sbom'] === undefined ? {} : { fromSbom: resolve(values['from-sbom']) }),
     ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
     ...(dependencies.cache === undefined ? {} : { cache: dependencies.cache }),
   })
