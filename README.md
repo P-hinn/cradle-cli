@@ -142,7 +142,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - uses: P-hinn/cradle-cli@v0.2.0
+      - uses: P-hinn/cradle-cli@v0.3.0
         with:
           fail-on: high
           upload-artifact: true
