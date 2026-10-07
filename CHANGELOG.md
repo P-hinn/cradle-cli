@@ -3,7 +3,14 @@
 Notable changes, newest first. Versions follow [semantic versioning](https://semver.org);
 while the project is pre-1.0, a minor bump may still change behaviour.
 
-## Unreleased
+## 0.3.0 — 2026-10-07
+
+Two additions, both about the inputs a gate is allowed to have. `--from-sbom`
+lets `check` and `scan` read the dependency graph from a CycloneDX document
+rather than a lockfile, which is the only description a shipped product or a
+supplier's component usually has. And the gate can now fail on active
+exploitation — KEV, EPSS — not only on a CVSS score. Nothing changes for an
+existing invocation: both are opt-in flags.
 
 ### Added
 
